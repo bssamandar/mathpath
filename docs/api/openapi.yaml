@@ -39,6 +39,8 @@ security:
   - bearerAuth: []
 
 tags:
+  - name: Platform
+    description: Operational endpoints.
   - name: Auth
   - name: Account
   - name: Family
@@ -59,6 +61,26 @@ tags:
   - name: Admin
 
 paths:
+  /health:
+    get:
+      tags: [Platform]
+      operationId: getHealth
+      summary: Liveness check for load balancers and uptime monitoring.
+      description: Public and cheap; touches no database.
+      security: []
+      x-permission: public
+      responses:
+        '200':
+          description: The process is up.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, version]
+                properties:
+                  status: { type: string, const: ok }
+                  version: { type: string }
+
   # ───────────────────────────── Auth ─────────────────────────────
   /auth/otp:
     post:
