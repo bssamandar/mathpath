@@ -4,10 +4,12 @@
 - Date: 2026-11-15
 
 ## Context
+
 The brief requires an API-first design. Future native mobile apps and school
 integrations will use the same API.
 
 ## Decision
+
 `packages/contracts/openapi.yaml` is the source of truth. From it we generate
 TypeScript types and a typed client (openapi-typescript), plus Zod request
 validators used by the API. CI fails if generated code is out of date, or if the
@@ -18,6 +20,7 @@ Conventions: REST under `/api/v1`, JSON, errors as RFC 9457
 submission POSTs, UUIDv7 IDs.
 
 ## Alternatives considered
+
 - **Code-first (NestJS Swagger decorators).** Less duplication, but the spec
   becomes a by-product. It is easy to break clients without noticing, and the
   contract cannot be reviewed before code exists.
@@ -27,5 +30,6 @@ submission POSTs, UUIDv7 IDs.
   contract for mobile or partners.
 
 ## Consequences
+
 - Every API change starts as a reviewable diff to the spec.
 - Slightly more writing up front; generators remove most of the repetition.

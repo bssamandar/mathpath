@@ -1,0 +1,17 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", "helpers:pinGitHubActionDigests"],
+  "baseBranches": ["develop"],
+  "schedule": ["before 6am on monday"],
+  "minimumReleaseAge": "14 days",
+  "rangeStrategy": "pin",
+  "labels": ["dependencies"],
+  "packageRules": [
+    {
+      "matchUpdateTypes": ["minor", "patch"],
+      "matchDepTypes": ["devDependencies"],
+      "groupName": "dev dependencies (non-major)"
+    }
+  ],
+  "vulnerabilityAlerts": { "enabled": true, "minimumReleaseAge": null }
+}

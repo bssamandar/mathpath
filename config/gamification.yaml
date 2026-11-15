@@ -1,0 +1,24 @@
+# XP is awarded only for demonstrated learning (PRD §8), never for time spent or video views.
+xp:
+  firstTryCorrect: 10
+  masteryPassed: 50
+  reviewPassed: 20
+  questCompleted: 30
+  # Caps farming of easy items; generous enough not to limit genuine learners.
+  dailyCap: 400
+# Level n needs levelBase * n^levelExponent total XP.
+levels:
+  levelBase: 100
+  levelExponent: 1.5
+streak:
+  # Freezes are earned, never bought; one is earned per this many streak days.
+  freezeEveryDays: 7
+  maxFreezes: 2
+leagues:
+  size: 30
+  promoteTop: 5
+  demoteBottom: 5
+notifications:
+  # No notifications to children during quiet hours (local time, 24h clock).
+  quietHoursStart: '21:00'
+  quietHoursEnd: '08:00'

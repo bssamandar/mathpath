@@ -4,11 +4,13 @@
 - Date: 2026-11-15
 
 ## Context
+
 The adaptive algorithm must detect gaps and route students back to
 prerequisite topics. At launch we have no answer data to train statistical
 models.
 
 ## Decision
+
 - **Mastery:** a topic is mastered when the mastery-test score ≥ the threshold
   (80%, config). Practice accuracy feeds a "warning" signal.
 - **Gap routing:** deterministic rules over the knowledge graph (see
@@ -18,6 +20,7 @@ models.
   interfaces.
 
 ## Alternatives considered
+
 - **Bayesian Knowledge Tracing / Item Response Theory.** More precise, but
   they need calibrated item parameters from real data, are hard to explain
   to parents and teachers, and are hard to debug.
@@ -25,6 +28,7 @@ models.
   tune. It is a candidate once we have data.
 
 ## Consequences
+
 - Behaviour is explainable ("you were sent to Fractions because...") and
   easy to unit-test.
 - We log every routing decision as a learning event, which becomes training data

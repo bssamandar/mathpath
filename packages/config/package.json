@@ -1,0 +1,23 @@
+{
+  "name": "@mathpath/config",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Typed, validated loader for the business rules in /config.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "lint": "eslint src",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "yaml": "2.9.1",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "4.1.12",
+    "vitest": "4.1.12"
+  }
+}

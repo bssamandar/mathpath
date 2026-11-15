@@ -4,12 +4,14 @@
 - Date: 2026-11-15
 
 ## Context
+
 Sign-up is phone + SMS OTP. Children have no phone and sign in with a family code
 and PIN. Staff need mandatory TOTP 2FA. The brief requires short-lived tokens with
 refresh rotation, Argon2id, and protection against credential stuffing and
 account sharing.
 
 ## Decision
+
 - Implement auth in the `identity` module.
 - **Access token:** JWT signed with EdDSA (Ed25519), 15 minutes, containing user ID,
   session ID and roles. The signing key comes from the secret manager and
@@ -25,6 +27,7 @@ account sharing.
   session is created.
 
 ## Alternatives considered
+
 - **Keycloak or another hosted IdP.** Mature, but heavy to run and harder to
   customise for phone OTP, child PIN login and Uzbek SMS gateways. It would also be
   another stateful system to secure and keep in the country.
@@ -34,6 +37,7 @@ account sharing.
 - **Tokens in localStorage.** Exposed to any XSS, so rejected.
 
 ## Consequences
+
 - We own security-critical code, so it gets the most tests and comments, and
   it is a focus of the penetration test.
 - Revocation takes effect within at most 15 minutes, or immediately through the
