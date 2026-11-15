@@ -11,6 +11,7 @@
  */
 import { type Database, newId, type RevokeReason, type Role } from '@mathpath/db';
 import type { Kysely } from 'kysely';
+import type { AuditService } from '../audit/audit.service';
 import type { Clock } from '../common/clock';
 import { ProblemException } from '../common/problem';
 import { randomToken, sha256 } from './crypto';
@@ -25,7 +26,12 @@ export const STAFF_ROLES: ReadonlySet<Role> = new Set(['author', 'reviewer', 'ad
 export interface ClientContext {
   ipPrefix: string | null;
   userAgentSummary: string | null;
+  /** For the audit log, so an entry can be matched to the request in the logs. */
+  requestId: string | null;
 }
+
+/** How the user proved who they are; recorded in the audit log. */
+export type SignInMethod = 'password' | 'otp' | 'registration';
 
 /** Everything the client receives when a session starts or is refreshed. */
 export interface IssuedSession {
@@ -51,10 +57,11 @@ export class SessionService {
     private readonly revoked: RevokedSessions,
     private readonly clock: Clock,
     private readonly ttl: { accessTokenTtlMinutes: number; refreshTokenTtlDays: number },
+    private readonly audit: AuditService,
   ) {}
 
   /** Starts a session for a user who just proved who they are. */
-  async start(userId: string, client: ClientContext): Promise<IssuedSession> {
+  async start(userId: string, client: ClientContext, method: SignInMethod): Promise<IssuedSession> {
     const now = this.clock.now();
     const refreshExpiresAt = this.refreshExpiry(now);
     const sessionId = newId();
@@ -85,6 +92,19 @@ export class SessionService {
         })
         .execute();
       await trx.updateTable('users').set({ last_login_at: now }).where('id', '=', userId).execute();
+      await this.audit.record(
+        {
+          action: 'auth.login',
+          actorId: userId,
+          actorRoles: roles,
+          targetType: 'session',
+          targetId: sessionId,
+          ipPrefix: client.ipPrefix,
+          requestId: client.requestId,
+          metadata: { method },
+        },
+        trx,
+      );
     });
 
     return this.issue({
@@ -101,7 +121,7 @@ export class SessionService {
    * Exchanges a refresh token for a new one and a new access token.
    * @throws ProblemException 401 when the token is unknown, expired, revoked or reused.
    */
-  async rotate(refreshToken: string): Promise<IssuedSession> {
+  async rotate(refreshToken: string, client: ClientContext): Promise<IssuedSession> {
     const now = this.clock.now();
     const newToken = randomToken();
     const refreshExpiresAt = this.refreshExpiry(now);
@@ -130,6 +150,18 @@ export class SessionService {
       if (!row || row.revoked_at) return { kind: 'invalid' as const };
       if (row.used_at) {
         await this.revokeIn(trx, row.session_id, 'token_reuse', now);
+        // Possible token theft: worth a security review, so it is audited.
+        await this.audit.record(
+          {
+            action: 'auth.refresh_token_reused',
+            actorId: row.user_id,
+            targetType: 'session',
+            targetId: row.session_id,
+            ipPrefix: client.ipPrefix,
+            requestId: client.requestId,
+          },
+          trx,
+        );
         return { kind: 'reused' as const, sessionId: row.session_id };
       }
       if (row.expires_at <= now || row.session_expires_at <= now)
@@ -180,9 +212,32 @@ export class SessionService {
     });
   }
 
-  /** Ends a session now, including its current access token. */
-  async revoke(sessionId: string, reason: RevokeReason): Promise<void> {
-    await this.revokeIn(this.db, sessionId, reason, this.clock.now());
+  /**
+   * Ends a session now, including its current access token.
+   * @param actor - Who ended it (the user on logout, an admin otherwise).
+   */
+  async revoke(
+    sessionId: string,
+    reason: RevokeReason,
+    actor: { userId: string; roles: readonly Role[] },
+    client: ClientContext,
+  ): Promise<void> {
+    await this.db.transaction().execute(async (trx) => {
+      await this.revokeIn(trx, sessionId, reason, this.clock.now());
+      await this.audit.record(
+        {
+          action: reason === 'logout' ? 'auth.logout' : 'auth.session_revoked',
+          actorId: actor.userId,
+          actorRoles: actor.roles,
+          targetType: 'session',
+          targetId: sessionId,
+          ipPrefix: client.ipPrefix,
+          requestId: client.requestId,
+          metadata: { reason },
+        },
+        trx,
+      );
+    });
     await this.revoked.add(sessionId, this.ttl.accessTokenTtlMinutes * 60_000);
   }
 

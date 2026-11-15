@@ -5,6 +5,7 @@
 import type { AppConfig } from '@mathpath/config';
 import { type Database, type Locale, newId } from '@mathpath/db';
 import type { Kysely } from 'kysely';
+import type { AuditService } from '../audit/audit.service';
 import type { Clock } from '../common/clock';
 import { ProblemException } from '../common/problem';
 import { perMinutes, type RateLimiter } from '../common/rate-limiter';
@@ -48,6 +49,7 @@ export class AuthService {
     private readonly limiter: RateLimiter,
     private readonly clock: Clock,
     private readonly limits: AppConfig['limits']['rateLimits'],
+    private readonly audit: AuditService,
   ) {}
 
   /** Verifies an OTP and continues the flow it was requested for. */
@@ -71,7 +73,7 @@ export class AuthService {
 
     if (!user) throw invalidCredentials();
     this.assertActive(user.status);
-    return { kind: 'session', session: await this.sessions.start(user.id, client) };
+    return { kind: 'session', session: await this.sessions.start(user.id, client, 'otp') };
   }
 
   /**
@@ -111,13 +113,26 @@ export class AuthService {
           .insertInto('user_roles')
           .values({ user_id: userId, role: 'parent', granted_at: now })
           .execute();
+        await this.audit.record(
+          {
+            action: 'user.register',
+            actorId: userId,
+            actorRoles: ['parent'],
+            targetType: 'user',
+            targetId: userId,
+            ipPrefix: client.ipPrefix,
+            requestId: client.requestId,
+            metadata: { termsVersion: input.acceptedTermsVersion },
+          },
+          trx,
+        );
       });
     } catch (error) {
       // Two sign-ups for the same number at the same moment: the unique index decides.
       if (/users_phone_live_uq/.test(String((error as Error).message))) throw phoneTaken();
       throw error;
     }
-    return this.sessions.start(userId, client);
+    return this.sessions.start(userId, client, 'registration');
   }
 
   /**
@@ -146,6 +161,15 @@ export class AuthService {
     if (!user || !check.ok) {
       await this.limiter.record(accountKey, accountWindow);
       await this.limiter.record(ipKey, ipWindow);
+      // The phone number is not logged; for an unknown number nothing identifies the target.
+      await this.audit.record({
+        action: 'auth.login_failed',
+        targetType: user ? 'user' : null,
+        targetId: user?.id ?? null,
+        ipPrefix: client.ipPrefix,
+        requestId: client.requestId,
+        metadata: { reason: user ? 'wrong_password' : 'unknown_account' },
+      });
       throw invalidCredentials();
     }
     this.assertActive(user.status);
@@ -159,7 +183,7 @@ export class AuthService {
         .where('id', '=', user.id)
         .execute();
     }
-    return this.sessions.start(user.id, client);
+    return this.sessions.start(user.id, client, 'password');
   }
 
   private assertActive(status: string): void {

@@ -11,6 +11,7 @@ import type { Database } from '@mathpath/db';
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import type { Kysely } from 'kysely';
+import { AuditService } from '../audit/audit.service';
 import { Clock, SystemClock } from '../common/clock';
 import { MemoryRateLimiter, RateLimiter } from '../common/rate-limiter';
 import type { Env } from '../config/env';
@@ -70,7 +71,7 @@ import { TokenService } from './token.service';
     },
     {
       provide: SessionService,
-      inject: [DB, TokenService, AuthKeys, RevokedSessions, Clock, BUSINESS_RULES],
+      inject: [DB, TokenService, AuthKeys, RevokedSessions, Clock, BUSINESS_RULES, AuditService],
       useFactory: (
         db: Kysely<Database>,
         tokens: TokenService,
@@ -78,7 +79,8 @@ import { TokenService } from './token.service';
         revoked: RevokedSessions,
         clock: Clock,
         rules: AppConfig,
-      ) => new SessionService(db, tokens, keys, revoked, clock, rules.auth.tokens),
+        audit: AuditService,
+      ) => new SessionService(db, tokens, keys, revoked, clock, rules.auth.tokens, audit),
     },
     {
       provide: OtpService,
@@ -112,6 +114,7 @@ import { TokenService } from './token.service';
         RateLimiter,
         Clock,
         BUSINESS_RULES,
+        AuditService,
       ],
       useFactory: (
         db: Kysely<Database>,
@@ -122,6 +125,7 @@ import { TokenService } from './token.service';
         limiter: RateLimiter,
         clock: Clock,
         rules: AppConfig,
+        audit: AuditService,
       ) =>
         new AuthService(
           db,
@@ -132,6 +136,7 @@ import { TokenService } from './token.service';
           limiter,
           clock,
           rules.limits.rateLimits,
+          audit,
         ),
     },
     { provide: APP_GUARD, useClass: AuthGuard },
