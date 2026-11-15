@@ -18,5 +18,7 @@ project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `apps/worker`: background worker skeleton.
 - `apps/web` and `apps/studio`: Next.js app skeletons with security headers.
 - Local PostgreSQL and Redis through Docker Compose; production Dockerfile for the API.
+- `@mathpath/db`: Kysely database layer, reversible migrations (identity, family,
+  risk, audit, outbox tables) and PGlite-based tests that run up → down → up.
 - CI (format, lint, typecheck, tests with an 80% coverage gate, build) and security
   scanning (gitleaks, pnpm audit, OSV-Scanner, Semgrep, CodeQL); Renovate.

@@ -83,7 +83,7 @@ erDiagram
 | id | uuid PK | |
 | phone_e164 | text UQ NULL | NULL for children. A partial unique index applies where `deleted_at IS NULL` |
 | phone_verified_at | timestamptz NULL | |
-| email | citext UQ NULL | Optional; staff only in the MVP |
+| email | text UQ NULL, CHECK lower-case | Optional; staff only in the MVP. Stored lower-case instead of using the `citext` extension |
 | password_hash | text NULL | Argon2id PHC string; NULL for children |
 | first_name | text NOT NULL | |
 | last_name | text NULL | Never shown on leaderboards; NULL allowed for children |
@@ -114,11 +114,18 @@ change only together with the code that checks them.
 | grade | smallint NOT NULL | CHECK 1–11 |
 | birth_year | smallint NULL | Year only (minimisation) |
 | avatar_code | text NULL | Choice from a built-in set; no photo uploads |
-| family_code | text UQ NOT NULL | Short code used for child login on a new device |
 | pin_hash | text NOT NULL | Argon2id |
 | pin_failed_count | smallint DEFAULT 0 | Locks after N failures (config) |
 | pin_locked_until | timestamptz NULL | |
 | daily_time_limit_min | smallint NULL | Set by the parent |
+
+**family_codes**: one per parent. A child signs in on a new device with their
+parent's family code, then picks their nickname and enters their PIN (UX flow F2).
+| Column | Type | Notes |
+|---|---|---|
+| parent_id | uuid PK FK → users | |
+| code | text UQ | 6–8 characters, A–Z and 0–9 |
+| created_at | timestamptz | |
 
 **mfa_factors**
 | Column | Type | Notes |
@@ -214,7 +221,7 @@ two linked parents (config).
 
 ### 3.3 `risk`
 
-**risk_events** (partitioned monthly)
+**risk_events** (partitioning deferred, see §5)
 | Column | Type | Notes |
 |---|---|---|
 | id | uuid | PK (id, created_at) |
@@ -593,7 +600,7 @@ consumers idempotent.
 `response_status`, `response_body jsonb`, `created_at`. Kept for 24 hours.
 Used for POSTs that carry an `Idempotency-Key`.
 
-**audit_log** (partitioned monthly; **append-only**)
+**audit_log** (**append-only**; partitioning deferred, see §5)
 | Column | Type | Notes |
 |---|---|---|
 | id | uuid | PK (id, created_at) |
@@ -690,6 +697,11 @@ Partitions are created ahead of time by a monthly worker job. Old partitions are
 dropped or detached in a single operation instead of slow `DELETE`s.
 
 ---
+
+> **Implementation note (step 6.2):** `risk_events` and `audit_log` start as plain
+> tables with a `created_at` index. Monthly partitioning is added in a later
+> migration once volume justifies it (target: before public launch), because
+> it needs the partition-maintenance job from the worker.
 
 ## 6. Migrations
 
