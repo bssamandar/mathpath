@@ -1,0 +1,22 @@
+{
+  "name": "@mathpath/web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Student, parent and teacher PWA (Next.js).",
+  "scripts": {
+    "dev": "next dev --port 3000",
+    "build": "next build",
+    "start": "next start --port 3000",
+    "lint": "eslint app next.config.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "next": "15.5.28",
+    "react": "19.1.10",
+    "react-dom": "19.1.10"
+  },
+  "devDependencies": {
+    "@types/react": "19.1.17",
+    "@types/react-dom": "19.1.11"
+  }
+}
