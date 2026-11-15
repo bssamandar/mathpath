@@ -103,6 +103,40 @@ importers:
         specifier: 3.2.4
         version: 3.2.4(@types/node@22.19.1)(jiti@2.6.1)(yaml@2.8.1)
 
+  apps/worker:
+    dependencies:
+      '@mathpath/config':
+        specifier: workspace:*
+        version: link:../../packages/config
+      '@nestjs/common':
+        specifier: 11.2.8
+        version: 11.2.8(reflect-metadata@0.2.2)(rxjs@7.8.2)
+      '@nestjs/core':
+        specifier: 11.2.8
+        version: 11.2.8(@nestjs/common@11.2.8(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/platform-express@11.2.8)(reflect-metadata@0.2.2)(rxjs@7.8.2)
+      reflect-metadata:
+        specifier: 0.2.2
+        version: 0.2.2
+      rxjs:
+        specifier: 7.8.2
+        version: 7.8.2
+    devDependencies:
+      '@nestjs/testing':
+        specifier: 11.2.8
+        version: 11.2.8(@nestjs/common@11.2.8(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.2.8)(@nestjs/platform-express@11.2.8)
+      '@swc/core':
+        specifier: 1.13.21
+        version: 1.13.21
+      '@vitest/coverage-v8':
+        specifier: 3.2.4
+        version: 3.2.4(vitest@3.2.4(@types/node@22.19.1)(jiti@2.6.1)(yaml@2.8.1))
+      unplugin-swc:
+        specifier: 1.5.7
+        version: 1.5.7(@swc/core@1.13.21)(rollup@4.68.3)
+      vitest:
+        specifier: 3.2.4
+        version: 3.2.4(@types/node@22.19.1)(jiti@2.6.1)(yaml@2.8.1)
+
   packages/config:
     dependencies:
       yaml:
