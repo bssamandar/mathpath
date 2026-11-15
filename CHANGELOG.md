@@ -20,5 +20,13 @@ project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Local PostgreSQL and Redis through Docker Compose; production Dockerfile for the API.
 - `@mathpath/db`: Kysely database layer, reversible migrations (identity, family,
   risk, audit, outbox tables) and PGlite-based tests that run up → down → up.
+- Sign-up and sign-in for parents (`apps/api` identity module): SMS one-time
+  codes with per-phone, per-network and resend limits; enumeration-safe responses;
+  Argon2id passwords with common and breached password checks; EdDSA access
+  tokens; rotating refresh tokens that revoke the session on reuse; HttpOnly
+  cookies; a session-bound CSRF token (ADR-0010); logout with immediate revocation.
+- `config/auth.yaml` for token lifetimes, OTP resend delay and password rules.
+- Migration `2026111502_terms_acceptance`: the terms version each user accepted.
+- Errors are returned as RFC 9457 problem details with a stable `code` and request ID.
 - CI (format, lint, typecheck, tests with an 80% coverage gate, build) and security
   scanning (gitleaks, pnpm audit, OSV-Scanner, Semgrep, CodeQL); Renovate.

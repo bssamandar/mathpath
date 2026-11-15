@@ -14,7 +14,7 @@ info:
       error carries `requestId` for support.
     - List endpoints use cursor pagination (`cursor`, `limit`) and return
       `nextCursor`.
-    - State-changing browser requests need the `X-CSRF-Token` header (double-submit).
+    - State-changing browser requests need the `X-CSRF-Token` header (the `csrfToken` from sign-in, ADR-0010).
     - Payment and submission POSTs accept `Idempotency-Key`. A repeat with the
       same key returns the original response.
     - Localised text is returned in the caller's locale (`Accept-Language` or the user
@@ -104,7 +104,10 @@ paths:
               additionalProperties: false
               properties:
                 phone: { $ref: '#/components/schemas/PhoneE164' }
-                purpose: { type: string, enum: [signup, login, reset_password, change_phone] }
+                purpose:
+                  type: string
+                  enum: [signup, login, reset_password, change_phone]
+                  description: '`reset_password` and `change_phone` are not implemented yet and return 400.'
                 captchaToken: { type: string, maxLength: 4096 }
                 deviceToken: { $ref: '#/components/schemas/DeviceToken' }
       responses:
@@ -184,7 +187,10 @@ paths:
                 firstName: { $ref: '#/components/schemas/PersonName' }
                 lastName: { $ref: '#/components/schemas/PersonName' }
                 password: { type: string, minLength: 10, maxLength: 128 }
-                role: { type: string, enum: [parent, teacher] }
+                role:
+                  type: string
+                  enum: [parent]
+                  description: '`teacher` is added when the teacher role enters scope (after the MVP).'
                 locale: { $ref: '#/components/schemas/Locale' }
                 referralCode: { type: string, maxLength: 32 }
                 acceptedTermsVersion: { type: string }
@@ -1828,7 +1834,7 @@ components:
 
   headers:
     SessionCookies:
-      description: Sets `mp_at` (access, 15 min), `mp_rt` (refresh, path-scoped to /auth/refresh) and `mp_csrf`.
+      description: 'Sets `__Host-mp_at` (access token, 15 min) and `__Secure-mp_rt` (refresh token, path /api/v1/auth/refresh), both HttpOnly, Secure, SameSite=Lax. Not set for clients that send `X-Client-Type: mobile`.'
       schema: { type: string }
 
   parameters:
@@ -2020,8 +2026,12 @@ components:
 
     SessionInfo:
       type: object
-      required: [userId, roles, mfaRequired, accessExpiresAt]
+      description: 'Clients that send `X-Client-Type: mobile` receive `accessToken` and `refreshToken` here instead of cookies.'
+      required: [userId, roles, mfaRequired, accessExpiresAt, csrfToken]
       properties:
+        csrfToken:
+          type: string
+          description: Send as `X-CSRF-Token` on state-changing requests authenticated by cookie (ADR-0010).
         userId: { $ref: '#/components/schemas/Id' }
         roles:
           type: array
