@@ -1,0 +1,28 @@
+{
+  "name": "@mathpath/db",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Database access (Kysely), schema types and reversible migrations.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "lint": "eslint src",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "migrate": "node dist/cli.js"
+  },
+  "dependencies": {
+    "kysely": "0.28.18",
+    "pg": "8.23.1",
+    "uuid": "14.0.3"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.5.14",
+    "@types/pg": "8.23.1",
+    "@vitest/coverage-v8": "4.1.12",
+    "kysely-pglite-dialect": "1.4.0",
+    "vitest": "4.1.12"
+  }
+}
