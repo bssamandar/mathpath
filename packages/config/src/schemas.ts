@@ -150,6 +150,35 @@ export const riskSchema = z
   })
   .strict();
 
+export const authSchema = z
+  .object({
+    tokens: z
+      .object({
+        accessTokenTtlMinutes: z.number().int().min(1).max(60),
+        refreshTokenTtlDays: z.number().int().min(1).max(90),
+        registrationTokenTtlMinutes: z.number().int().min(1).max(60),
+      })
+      .strict(),
+    otp: z.object({ resendAfterSeconds: positiveInt }).strict(),
+    password: z
+      .object({
+        // NIST 800-63B sets 8 as the floor; the brief asks for at least 10.
+        minLength: z.number().int().min(8),
+        maxLength: z.number().int().max(1024),
+        argon2: z
+          .object({
+            // OWASP minimum for Argon2id is 19 MiB with t = 2.
+            memoryKiB: z.number().int().min(19456),
+            timeCost: z.number().int().min(2),
+            parallelism: z.number().int().min(1).max(16),
+          })
+          .strict(),
+      })
+      .strict()
+      .refine((p) => p.maxLength >= p.minLength, 'maxLength must be at least minLength'),
+  })
+  .strict();
+
 const locale = z.enum(['uz-Latn', 'ru', 'en']);
 
 export const contentSchema = z
@@ -182,6 +211,7 @@ export const configSchemas = {
   limits: limitsSchema,
   risk: riskSchema,
   content: contentSchema,
+  auth: authSchema,
 } as const;
 
 export type ConfigName = keyof typeof configSchemas;

@@ -54,6 +54,16 @@ export default tseslint.config(
     },
   },
   {
+    // NestJS injects constructor parameters by their runtime class, which
+    // TypeScript emits as decorator metadata. These options tell the
+    // type-import rule that such imports are values, so it does not turn
+    // them into `import type` and break dependency injection.
+    files: ['apps/api/**/*.ts', 'apps/worker/**/*.ts'],
+    languageOptions: {
+      parserOptions: { emitDecoratorMetadata: true, experimentalDecorators: true },
+    },
+  },
+  {
     files: ['**/*.test.ts', '**/*.spec.ts'],
     rules: { '@typescript-eslint/no-non-null-assertion': 'off' },
   },

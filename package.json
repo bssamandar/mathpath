@@ -20,7 +20,8 @@
     "format:check": "prettier --check .",
     "services:up": "docker compose -f infra/docker-compose.yml up -d",
     "services:down": "docker compose -f infra/docker-compose.yml down",
-    "prepare": "husky"
+    "prepare": "husky",
+    "db:migrate": "pnpm --filter @mathpath/db build && pnpm --filter @mathpath/db migrate latest"
   },
   "devDependencies": {
     "@commitlint/cli": "19.8.1",

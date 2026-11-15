@@ -1,6 +1,6 @@
 # ADR-0005: Own authentication module with short JWTs and rotating refresh tokens
 
-- Status: Proposed
+- Status: Proposed (the CSRF part is refined by [ADR-0010](0010-csrf-token-bound-to-session.md))
 - Date: 2026-11-15
 
 ## Context

@@ -259,8 +259,9 @@ interface, so a statistical model (BKT/IRT) can replace it later
   both as `HttpOnly; Secure; SameSite=Lax` cookies scoped to the API domain, and
   JavaScript never sees a token. Future mobile apps use the same endpoints with
   `Authorization: Bearer` and secure device storage.
-- **CSRF:** SameSite cookies plus a double-submit token header
-  (`X-CSRF-Token`) on every state-changing request from the browser.
+- **CSRF:** SameSite cookies plus an `X-CSRF-Token` header on every
+  state-changing request from the browser. The token is an HMAC of the session
+  ID, returned in the sign-in response ([ADR-0010](adr/0010-csrf-token-bound-to-session.md)).
 
 ### 5.5 Payments (Payme example)
 
@@ -445,14 +446,15 @@ provider" is written in Phase 6, once the code exists.
 
 ## 9. Decisions in this phase
 
-| ADR                                           | Decision                                                                 | Main alternative                       |
-| --------------------------------------------- | ------------------------------------------------------------------------ | -------------------------------------- |
-| [0001](adr/0001-typescript-monorepo.md)       | TypeScript monorepo (pnpm + Turborepo)                                   | Python backend + separate JS front-end |
-| [0002](adr/0002-modular-monolith.md)          | Modular monolith + worker                                                | Microservices                          |
-| [0003](adr/0003-contract-first-openapi.md)    | Contract-first OpenAPI 3.1                                               | Code-first (Swagger decorators)        |
-| [0004](adr/0004-postgresql-kysely.md)         | PostgreSQL + Kysely + up/down migrations; UUIDv7                         | Prisma ORM                             |
-| [0005](adr/0005-auth-sessions-and-tokens.md)  | Own auth module; short JWT + rotating opaque refresh in HttpOnly cookies | Keycloak                               |
-| [0006](adr/0006-rule-based-adaptivity.md)     | Rule-based gap routing + SM-2 behind interfaces                          | BKT/IRT from day one                   |
-| [0007](adr/0007-outbox-domain-events.md)      | Transactional outbox + BullMQ                                            | RabbitMQ/Kafka                         |
-| [0008](adr/0008-payment-provider-adapters.md) | Provider adapter interface; tiyin integers; three-level idempotency      | Payment aggregator only                |
-| [0009](adr/0009-nextjs-two-frontends.md)      | Next.js, separate `web` and `studio` apps                                | Single SPA (Vite)                      |
+| ADR                                             | Decision                                                                 | Main alternative                       |
+| ----------------------------------------------- | ------------------------------------------------------------------------ | -------------------------------------- |
+| [0001](adr/0001-typescript-monorepo.md)         | TypeScript monorepo (pnpm + Turborepo)                                   | Python backend + separate JS front-end |
+| [0002](adr/0002-modular-monolith.md)            | Modular monolith + worker                                                | Microservices                          |
+| [0003](adr/0003-contract-first-openapi.md)      | Contract-first OpenAPI 3.1                                               | Code-first (Swagger decorators)        |
+| [0004](adr/0004-postgresql-kysely.md)           | PostgreSQL + Kysely + up/down migrations; UUIDv7                         | Prisma ORM                             |
+| [0005](adr/0005-auth-sessions-and-tokens.md)    | Own auth module; short JWT + rotating opaque refresh in HttpOnly cookies | Keycloak                               |
+| [0010](adr/0010-csrf-token-bound-to-session.md) | CSRF token = HMAC of session ID, returned in the body                    | Double-submit cookie                   |
+| [0006](adr/0006-rule-based-adaptivity.md)       | Rule-based gap routing + SM-2 behind interfaces                          | BKT/IRT from day one                   |
+| [0007](adr/0007-outbox-domain-events.md)        | Transactional outbox + BullMQ                                            | RabbitMQ/Kafka                         |
+| [0008](adr/0008-payment-provider-adapters.md)   | Provider adapter interface; tiyin integers; three-level idempotency      | Payment aggregator only                |
+| [0009](adr/0009-nextjs-two-frontends.md)        | Next.js, separate `web` and `studio` apps                                | Single SPA (Vite)                      |
