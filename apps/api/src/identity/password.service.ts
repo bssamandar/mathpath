@@ -6,6 +6,7 @@ import type { AppConfig } from '@mathpath/config';
 import { ProblemException } from '../common/problem';
 import type { BreachedPasswordChecker } from './breached-passwords';
 import { commonPasswords } from './common-passwords';
+import { randomToken } from './crypto';
 
 /** Result of checking a password against a stored hash. */
 export interface PasswordCheck {
@@ -73,7 +74,7 @@ export class PasswordService {
    */
   async verify(storedHash: string | null, password: string): Promise<PasswordCheck> {
     if (!storedHash) {
-      this.dummyHash ??= this.hash(`dummy-${Math.random()}`);
+      this.dummyHash ??= this.hash(randomToken());
       await verify(await this.dummyHash, password).catch(() => false);
       return { ok: false, needsRehash: false };
     }
