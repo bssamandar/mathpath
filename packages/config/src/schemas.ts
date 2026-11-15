@@ -116,6 +116,7 @@ export const limitsSchema = z
         loginFailuresPerAccount: window,
         loginFailuresPerIpPrefix: window,
         childPinFailures: window,
+        accountLock: window,
       })
       .strict(),
   })
@@ -137,8 +138,33 @@ export const riskSchema = z
         perDevice: window,
       })
       .strict(),
-    smsBudget: z.object({ dailyCapTiyin: positiveInt, alertRatio: fraction }).strict(),
-    signals: z.record(z.string(), nonNegativeInt),
+    smsBudget: z
+      .object({
+        hourlyCapTiyin: positiveInt,
+        dailyCapTiyin: positiveInt,
+        costPerSmsTiyin: positiveInt,
+        alertRatio: fraction,
+      })
+      .strict()
+      .refine(
+        (b) => b.hourlyCapTiyin <= b.dailyCapTiyin,
+        'hourly cap must not exceed the daily cap',
+      ),
+    // Every signal the scoring code knows, so a typo in a name is caught at start-up.
+    signals: z
+      .object({
+        ipIsDatacenterOrVpn: nonNegativeInt,
+        ipReputationBad: nonNegativeInt,
+        deviceOnManyAccounts: nonNegativeInt,
+        otpVelocityExceeded: nonNegativeInt,
+        disposableEmail: nonNegativeInt,
+        headlessOrEmulator: nonNegativeInt,
+        phonePrefixFlagged: nonNegativeInt,
+        newDeviceAndNewIpPrefix: nonNegativeInt,
+        failedLoginEach: nonNegativeInt,
+        failedLoginMax: nonNegativeInt,
+      })
+      .strict(),
     actions: z
       .array(z.object({ from: nonNegativeInt, action: riskAction }).strict())
       .min(1)
