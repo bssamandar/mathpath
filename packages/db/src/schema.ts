@@ -36,6 +36,8 @@ export interface UsersTable {
   status: ColumnType<UserStatus, UserStatus | undefined, UserStatus>;
   risk_level: ColumnType<RiskLevel, RiskLevel | undefined, RiskLevel>;
   last_login_at: NullableTimestamp;
+  terms_version: string | null;
+  terms_accepted_at: NullableTimestamp;
   deleted_at: NullableTimestamp;
   created_at: CreatedAt;
   updated_at: CreatedAt;

@@ -72,8 +72,9 @@ describe('migrations', () => {
   });
 
   it('migrateDown reverts only the latest migration', async () => {
+    const names = Object.keys(migrations);
     const reverted = await migrateDown(db as Kysely<unknown>);
-    expect(reverted).toEqual(['Down 2026111501_identity']);
+    expect(reverted).toEqual([`Down ${names[names.length - 1]}`]);
   });
 });
 
@@ -90,6 +91,18 @@ describe('identity constraints', () => {
 
   it('rejects phone numbers that are not E.164', async () => {
     await expect(insertUser({ phone_e164: '901234567' })).rejects.toThrow(/check/i);
+  });
+
+  it('stores the terms version and acceptance time together or not at all', async () => {
+    const id = await insertUser();
+    await expect(
+      db.updateTable('users').set({ terms_version: '2026-11' }).where('id', '=', id).execute(),
+    ).rejects.toThrow(/users_terms_pair_ck/);
+    await db
+      .updateTable('users')
+      .set({ terms_version: '2026-11', terms_accepted_at: new Date() })
+      .where('id', '=', id)
+      .execute();
   });
 
   it('lets children exist without a phone number (data minimisation)', async () => {
