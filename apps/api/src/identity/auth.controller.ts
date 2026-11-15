@@ -10,10 +10,11 @@ import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { Clock } from '../common/clock';
 import { ipPrefix, userAgentSummary } from '../common/client-info';
-import { ProblemException } from '../common/problem';
+import { ProblemException, requestIdOf } from '../common/problem';
 import { deviceToken, locale, parseInput, personName, phoneE164 } from '../common/validation';
 import { AuthService } from './auth.service';
-import { Authenticated, type AuthedRequest, SkipCsrf } from './auth.guard';
+import { type AuthedRequest, SkipCsrf } from './auth.guard';
+import { Access } from './permissions';
 import { clearSessionCookies, REFRESH_COOKIE, setSessionCookies } from './cookies';
 import { OtpService } from './otp.service';
 import { type ClientContext, type IssuedSession, SessionService } from './session.service';
@@ -84,6 +85,7 @@ export class AuthController {
 
   /** POST /auth/otp: always 202 for a well-formed request (no phone enumeration). */
   @Post('otp')
+  @Access('public')
   @HttpCode(202)
   async requestOtp(@Body() raw: unknown, @Req() req: Request) {
     const body = parseInput(otpRequestBody, raw);
@@ -96,6 +98,7 @@ export class AuthController {
 
   /** POST /auth/otp/verify: a registration ticket (signup) or a session (login). */
   @Post('otp/verify')
+  @Access('public')
   @HttpCode(200)
   async verifyOtp(
     @Body() raw: unknown,
@@ -115,6 +118,7 @@ export class AuthController {
 
   /** POST /auth/register: creates a parent account and signs it in. */
   @Post('register')
+  @Access('public')
   @HttpCode(201)
   async register(
     @Body() raw: unknown,
@@ -128,6 +132,7 @@ export class AuthController {
 
   /** POST /auth/login: phone and password. */
   @Post('login')
+  @Access('public')
   @HttpCode(200)
   async login(
     @Body() raw: unknown,
@@ -141,6 +146,7 @@ export class AuthController {
 
   /** POST /auth/refresh: rotates the refresh token (cookie, or body for mobile). */
   @Post('refresh')
+  @Access('public')
   @HttpCode(200)
   @SkipCsrf()
   async refresh(
@@ -153,7 +159,7 @@ export class AuthController {
     const token = body.refreshToken ?? cookies[REFRESH_COOKIE];
     try {
       if (!token) throw new ProblemException(401, 'SESSION_EXPIRED', 'Please sign in again.');
-      return this.respond(req, res, await this.sessions.rotate(token));
+      return this.respond(req, res, await this.sessions.rotate(token, clientOf(req)));
     } catch (error) {
       // A dead refresh cookie is useless; remove it so the client stops sending it.
       clearSessionCookies(res);
@@ -164,12 +170,13 @@ export class AuthController {
   /** POST /auth/logout: revokes the current session and clears the cookies. */
   @Post('logout')
   @HttpCode(204)
-  @Authenticated()
+  @Access('authenticated')
   async logout(
     @Req() req: AuthedRequest,
     @Res({ passthrough: true }) res: Response,
   ): Promise<void> {
-    await this.sessions.revoke(req.auth!.sessionId, 'logout');
+    const { sessionId, userId, roles } = req.auth!;
+    await this.sessions.revoke(sessionId, 'logout', { userId, roles }, clientOf(req));
     clearSessionCookies(res);
   }
 
@@ -190,5 +197,9 @@ export class AuthController {
 }
 
 function clientOf(req: Request): ClientContext {
-  return { ipPrefix: ipPrefix(req.ip), userAgentSummary: userAgentSummary(req.get('user-agent')) };
+  return {
+    ipPrefix: ipPrefix(req.ip),
+    userAgentSummary: userAgentSummary(req.get('user-agent')),
+    requestId: requestIdOf(req),
+  };
 }

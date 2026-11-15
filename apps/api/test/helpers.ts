@@ -1,5 +1,7 @@
 import { createTestDb, type Database } from '@mathpath/db';
+import type { Type } from '@nestjs/common';
 import type { NestExpressApplication } from '@nestjs/platform-express';
+import { DiscoveryModule } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
 import type { Kysely } from 'kysely';
 import { configureApp } from '../src/app.factory';
@@ -44,11 +46,15 @@ export interface TestApp {
 }
 
 /** Boots the whole API on an in-memory database with fake SMS and a fake clock. */
-export async function createTestApp(): Promise<TestApp> {
+export async function createTestApp(extraControllers: Type[] = []): Promise<TestApp> {
   const db = await createTestDb();
   const clock = new FakeClock();
   const sms = new FakeSmsSender();
-  const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
+  const moduleRef = await Test.createTestingModule({
+    // DiscoveryModule lets the route-scan test list every controller.
+    imports: [AppModule, DiscoveryModule],
+    controllers: extraControllers,
+  })
     .overrideProvider(DB)
     .useValue(db)
     .overrideProvider(Clock)

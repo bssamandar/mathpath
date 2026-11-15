@@ -1,6 +1,7 @@
 import { Controller, Get, Inject } from '@nestjs/common';
 import type { Env } from '../config/env';
 import { ENV } from '../config/tokens';
+import { Access } from '../identity/permissions';
 
 /** Response of the health endpoint. */
 export interface HealthResponse {
@@ -25,6 +26,7 @@ export class HealthController {
    * @returns `{ status: 'ok', version }` with HTTP 200 while the process is up.
    */
   @Get()
+  @Access('public')
   check(): HealthResponse {
     return { status: 'ok', version: this.env.APP_VERSION };
   }
