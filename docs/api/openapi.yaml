@@ -1,0 +1,2643 @@
+openapi: 3.1.0
+info:
+  title: MathPath API
+  version: 0.1.0
+  summary: Public contract of the MathPath learning platform (MVP).
+  description: |
+    Contract-first API (see ADR-0003). This file is the source of truth: server
+    validators and client types are generated from it.
+
+    ## Conventions
+    - Base path `/api/v1`. JSON only. Field names are camelCase.
+    - IDs are UUIDv7 strings.
+    - Errors use RFC 9457 `application/problem+json` (schema `Problem`). Every
+      error carries `requestId` for support.
+    - List endpoints use cursor pagination (`cursor`, `limit`) and return
+      `nextCursor`.
+    - State-changing browser requests need the `X-CSRF-Token` header (double-submit).
+    - Payment and submission POSTs accept `Idempotency-Key`. A repeat with the
+      same key returns the original response.
+    - Localised text is returned in the caller's locale (`Accept-Language` or the user
+      setting) unless the endpoint is a CMS endpoint, which returns `LocalizedText`.
+    - **Authorisation:** every operation lists its required permission in
+      `x-permission`. The server enforces it on every request, plus object-level
+      checks (for example a parent may only read their own children).
+    - **Answers never leave the server.** No student-facing schema contains an
+      answer key until feedback policy allows it.
+  contact:
+    name: MathPath maintainers
+  license:
+    name: Proprietary
+servers:
+  - url: https://api.mathpath.uz/api/v1
+    description: Production (placeholder domain)
+  - url: http://localhost:4000/api/v1
+    description: Local development
+
+security:
+  - cookieAuth: []
+  - bearerAuth: []
+
+tags:
+  - name: Auth
+  - name: Account
+  - name: Family
+  - name: Privacy
+  - name: Catalogue
+  - name: Media
+  - name: Learning
+  - name: Assessment
+  - name: Gamification
+  - name: Billing
+  - name: PaymentCallbacks
+    description: Server-to-server endpoints called by payment providers.
+  - name: Certificates
+  - name: Classroom
+  - name: Reports
+  - name: Studio
+    description: Content management (authors, reviewers).
+  - name: Admin
+
+paths:
+  # ───────────────────────────── Auth ─────────────────────────────
+  /auth/otp:
+    post:
+      tags: [Auth]
+      operationId: requestOtp
+      summary: Send a one-time code by SMS.
+      description: |
+        Rate-limited per phone, IP prefix and device (config/risk.yaml). May demand
+        a CAPTCHA token when the risk score is elevated (response 428). Always
+        returns 202 for well-formed requests, whether or not the number is
+        registered, to prevent phone enumeration.
+      security: []
+      x-permission: public
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone, purpose]
+              additionalProperties: false
+              properties:
+                phone: { $ref: '#/components/schemas/PhoneE164' }
+                purpose: { type: string, enum: [signup, login, reset_password, change_phone] }
+                captchaToken: { type: string, maxLength: 4096 }
+                deviceToken: { $ref: '#/components/schemas/DeviceToken' }
+      responses:
+        '202':
+          description: Code sent (or silently suppressed).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [challengeId, expiresInS, resendAfterS]
+                properties:
+                  challengeId: { $ref: '#/components/schemas/Id' }
+                  expiresInS: { type: integer }
+                  resendAfterS: { type: integer }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '428': { $ref: '#/components/responses/CaptchaRequired' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /auth/otp/verify:
+    post:
+      tags: [Auth]
+      operationId: verifyOtp
+      summary: Verify an OTP code.
+      description: |
+        For `signup` returns a short-lived `registrationToken` used by
+        `/auth/register`. For `login` creates a session (sets cookies). Counts
+        attempts; the challenge is burned after the configured maximum.
+      security: []
+      x-permission: public
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [challengeId, code]
+              additionalProperties: false
+              properties:
+                challengeId: { $ref: '#/components/schemas/Id' }
+                code: { type: string, pattern: '^[0-9]{4,8}$' }
+                deviceToken: { $ref: '#/components/schemas/DeviceToken' }
+      responses:
+        '200':
+          description: Verified.
+          headers:
+            Set-Cookie: { $ref: '#/components/headers/SessionCookies' }
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/RegistrationTicket'
+                  - $ref: '#/components/schemas/SessionInfo'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /auth/register:
+    post:
+      tags: [Auth]
+      operationId: registerParent
+      summary: Complete parent (or teacher) sign-up after phone verification.
+      description: |
+        Password is checked against breached-password lists (k-anonymity) and
+        hashed with Argon2id. Creates a session.
+      security: []
+      x-permission: public
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [registrationToken, firstName, password, role, acceptedTermsVersion]
+              additionalProperties: false
+              properties:
+                registrationToken: { type: string }
+                firstName: { $ref: '#/components/schemas/PersonName' }
+                lastName: { $ref: '#/components/schemas/PersonName' }
+                password: { type: string, minLength: 10, maxLength: 128 }
+                role: { type: string, enum: [parent, teacher] }
+                locale: { $ref: '#/components/schemas/Locale' }
+                referralCode: { type: string, maxLength: 32 }
+                acceptedTermsVersion: { type: string }
+      responses:
+        '201':
+          description: Account created and signed in.
+          headers:
+            Set-Cookie: { $ref: '#/components/headers/SessionCookies' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SessionInfo' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      operationId: loginWithPassword
+      summary: Sign in with phone and password.
+      description: |
+        Login attempts are limited per account and per IP prefix. A new device
+        triggers a notification to the account owner. Staff accounts receive
+        `mfaRequired: true` and must call `/auth/mfa/verify` before getting
+        full permissions.
+      security: []
+      x-permission: public
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone, password]
+              additionalProperties: false
+              properties:
+                phone: { $ref: '#/components/schemas/PhoneE164' }
+                password: { type: string, maxLength: 128 }
+                captchaToken: { type: string, maxLength: 4096 }
+                deviceToken: { $ref: '#/components/schemas/DeviceToken' }
+      responses:
+        '200':
+          description: Signed in (possibly pending MFA).
+          headers:
+            Set-Cookie: { $ref: '#/components/headers/SessionCookies' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SessionInfo' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '428': { $ref: '#/components/responses/CaptchaRequired' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /auth/child-login:
+    post:
+      tags: [Auth]
+      operationId: loginChild
+      summary: Sign a child in with family code and PIN.
+      description: |
+        Children have no phone or password. Locks the PIN after N failures
+        (config) and notifies the parent.
+      security: []
+      x-permission: public
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [familyCode, nickname, pin]
+              additionalProperties: false
+              properties:
+                familyCode: { type: string, pattern: '^[A-Z0-9]{6,8}$' }
+                nickname: { type: string, maxLength: 32 }
+                pin: { type: string, pattern: '^[0-9]{4,6}$' }
+                deviceToken: { $ref: '#/components/schemas/DeviceToken' }
+      responses:
+        '200':
+          description: Signed in.
+          headers:
+            Set-Cookie: { $ref: '#/components/headers/SessionCookies' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SessionInfo' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '423': { $ref: '#/components/responses/Locked' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /auth/switch-profile:
+    post:
+      tags: [Auth]
+      operationId: switchToChildProfile
+      summary: Parent opens a child's profile on the same device.
+      x-permission: family:switch_profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [childId]
+              additionalProperties: false
+              properties:
+                childId: { $ref: '#/components/schemas/Id' }
+      responses:
+        '200':
+          description: Child session created; parent session kept for switching back.
+          headers:
+            Set-Cookie: { $ref: '#/components/headers/SessionCookies' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SessionInfo' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      operationId: refreshSession
+      summary: Rotate the refresh token and issue a new access token.
+      description: |
+        Reads the refresh token from its cookie (or body for mobile). Presenting
+        a token that was already used revokes the whole session family.
+      security: []
+      x-permission: public
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                refreshToken: { type: string, description: Mobile clients only. }
+      responses:
+        '200':
+          description: Rotated.
+          headers:
+            Set-Cookie: { $ref: '#/components/headers/SessionCookies' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SessionInfo' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      operationId: logout
+      summary: Revoke the current session.
+      x-permission: authenticated
+      responses:
+        '204': { description: Signed out; cookies cleared. }
+
+  /auth/mfa/totp:
+    post:
+      tags: [Auth]
+      operationId: enrolTotp
+      summary: Start TOTP enrolment; returns a provisioning URI.
+      x-permission: authenticated
+      responses:
+        '200':
+          description: Scan the URI with an authenticator app, then confirm.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [factorId, otpauthUri]
+                properties:
+                  factorId: { $ref: '#/components/schemas/Id' }
+                  otpauthUri: { type: string }
+
+  /auth/mfa/verify:
+    post:
+      tags: [Auth]
+      operationId: verifyMfa
+      summary: Confirm enrolment or complete an MFA-pending login.
+      x-permission: authenticated
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              additionalProperties: false
+              properties:
+                factorId: { $ref: '#/components/schemas/Id' }
+                code: { type: string, pattern: '^[0-9]{6}$' }
+                recoveryCode: { type: string, maxLength: 32 }
+      responses:
+        '200':
+          description: MFA satisfied. Recovery codes are returned once, on first enrolment.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  session: { $ref: '#/components/schemas/SessionInfo' }
+                  recoveryCodes:
+                    type: array
+                    items: { type: string }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  # ──────────────────────────── Account ────────────────────────────
+  /me:
+    get:
+      tags: [Account]
+      operationId: getMe
+      summary: Current user, roles and entitlements.
+      x-permission: authenticated
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Me' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    patch:
+      tags: [Account]
+      operationId: updateMe
+      summary: Update own profile settings.
+      x-permission: authenticated
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                firstName: { $ref: '#/components/schemas/PersonName' }
+                lastName: { $ref: '#/components/schemas/PersonName' }
+                locale: { $ref: '#/components/schemas/Locale' }
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Me' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+  /me/sessions:
+    get:
+      tags: [Account]
+      operationId: listMySessions
+      summary: Active sessions and devices.
+      x-permission: authenticated
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/SessionSummary' }
+
+  /me/sessions/{sessionId}:
+    delete:
+      tags: [Account]
+      operationId: revokeMySession
+      summary: Sign out a specific device.
+      x-permission: authenticated
+      parameters:
+        - { name: sessionId, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } }
+      responses:
+        '204': { description: Revoked. }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ──────────────────────────── Family ────────────────────────────
+  /children:
+    get:
+      tags: [Family]
+      operationId: listChildren
+      summary: Children linked to the signed-in parent.
+      x-permission: family:read
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, familyCode]
+                properties:
+                  familyCode: { type: string }
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Child' }
+    post:
+      tags: [Family]
+      operationId: addChild
+      summary: Add a child profile with parental consent.
+      description: |
+        Consent is recorded with the policy version and evidence. The parent
+        confirms with a fresh OTP (`consentOtpChallengeId` + code) to make the
+        consent verifiable.
+      x-permission: family:manage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [firstName, nickname, grade, pin, consent]
+              additionalProperties: false
+              properties:
+                firstName: { $ref: '#/components/schemas/PersonName' }
+                nickname: { type: string, minLength: 2, maxLength: 24 }
+                grade: { type: integer, minimum: 1, maximum: 11 }
+                birthYear: { type: integer, minimum: 2005, maximum: 2025 }
+                pin: { type: string, pattern: '^[0-9]{4,6}$' }
+                consent: { $ref: '#/components/schemas/ConsentInput' }
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Child' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /children/{childId}:
+    parameters:
+      - $ref: '#/components/parameters/ChildId'
+    patch:
+      tags: [Family]
+      operationId: updateChild
+      summary: Change a child's grade, nickname, PIN or daily time limit.
+      x-permission: family:manage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                nickname: { type: string, minLength: 2, maxLength: 24 }
+                grade: { type: integer, minimum: 1, maximum: 11 }
+                pin: { type: string, pattern: '^[0-9]{4,6}$' }
+                dailyTimeLimitMin: { type: [integer, 'null'], minimum: 10, maximum: 240 }
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Child' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /children/{childId}/consents:
+    parameters:
+      - $ref: '#/components/parameters/ChildId'
+    get:
+      tags: [Family]
+      operationId: listConsents
+      summary: Consent history for a child.
+      x-permission: family:read
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Consent' }
+    post:
+      tags: [Family]
+      operationId: updateConsent
+      summary: Grant or revoke consent scopes (for example teacher sharing).
+      x-permission: family:manage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ConsentInput' }
+      responses:
+        '201':
+          description: New consent record.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Consent' }
+
+  # ──────────────────────────── Privacy ────────────────────────────
+  /privacy/requests:
+    post:
+      tags: [Privacy]
+      operationId: createDataRequest
+      summary: Request a data export or account deletion.
+      description: |
+        Deletion starts a grace period (config, default 14 days) during which the
+        request can be cancelled. Requires a fresh OTP for parents.
+      x-permission: privacy:request
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type, subjectId, otpChallengeId, otpCode]
+              additionalProperties: false
+              properties:
+                type: { type: string, enum: [export, deletion] }
+                subjectId: { $ref: '#/components/schemas/Id' }
+                otpChallengeId: { $ref: '#/components/schemas/Id' }
+                otpCode: { type: string, pattern: '^[0-9]{4,8}$' }
+      responses:
+        '202':
+          description: Accepted.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DataRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /privacy/requests/{requestId}:
+    parameters:
+      - { name: requestId, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } }
+    get:
+      tags: [Privacy]
+      operationId: getDataRequest
+      summary: Status of a data request; includes a short-lived download URL when ready.
+      x-permission: privacy:request
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DataRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Privacy]
+      operationId: cancelDataRequest
+      summary: Cancel a pending deletion during the grace period.
+      x-permission: privacy:request
+      responses:
+        '204': { description: Cancelled. }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  # ─────────────────────────── Catalogue ───────────────────────────
+  /tracks:
+    get:
+      tags: [Catalogue]
+      operationId: listTracks
+      summary: Tracks with their courses.
+      security: []
+      x-permission: public
+      responses:
+        '200':
+          description: OK (cacheable, ETag)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Track' }
+
+  /courses/{courseId}:
+    get:
+      tags: [Catalogue]
+      operationId: getCourse
+      summary: Course tree (chapters and topics) with the caller's progress if signed in.
+      security: [{}, { cookieAuth: [] }, { bearerAuth: [] }]
+      x-permission: public
+      parameters:
+        - { name: courseId, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CourseTree' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /topics/{topicId}/lesson:
+    get:
+      tags: [Catalogue]
+      operationId: getLesson
+      summary: Lesson steps of a topic (the version pinned for this student).
+      description: Returns 402 with an upgrade hint if the topic is not free and the user has no entitlement.
+      x-permission: content:read
+      parameters:
+        - $ref: '#/components/parameters/TopicId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Lesson' }
+        '402': { $ref: '#/components/responses/PaymentRequired' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ───────────────────────────── Media ─────────────────────────────
+  /media/{mediaId}/playback:
+    get:
+      tags: [Media]
+      operationId: getPlayback
+      summary: Signed, expiring HLS playlist URL plus watermark payload.
+      x-permission: content:read
+      parameters:
+        - { name: mediaId, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [manifestUrl, expiresAt, watermark, subtitles]
+                properties:
+                  manifestUrl: { type: string, format: uri }
+                  expiresAt: { type: string, format: date-time }
+                  watermark: { type: string, description: Short user code rendered over the video. }
+                  subtitles:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        locale: { $ref: '#/components/schemas/Locale' }
+                        url: { type: string, format: uri }
+        '402': { $ref: '#/components/responses/PaymentRequired' }
+
+  /media/{mediaId}/key:
+    get:
+      tags: [Media]
+      operationId: getHlsKey
+      summary: AES-128 key for an HLS stream (called by the player).
+      description: Checks session and entitlement on every call; rate-limited per session.
+      x-permission: content:read
+      parameters:
+        - { name: mediaId, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } }
+        - { name: token, in: query, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: Raw 16-byte key.
+          content:
+            application/octet-stream:
+              schema: { type: string, contentEncoding: binary }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  # ──────────────────────────── Learning ────────────────────────────
+  /students/{studentId}/learning-path:
+    get:
+      tags: [Learning]
+      operationId: getLearningPath
+      summary: Current personal learning path for a course.
+      description: Accessible to the student, their linked parents and teachers with sharing consent.
+      x-permission: progress:read
+      parameters:
+        - $ref: '#/components/parameters/StudentId'
+        - { name: courseId, in: query, required: true, schema: { $ref: '#/components/schemas/Id' } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LearningPath' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /students/{studentId}/progress:
+    get:
+      tags: [Learning]
+      operationId: getProgress
+      summary: Mastery by topic, time spent and weak areas for a course.
+      x-permission: progress:read
+      parameters:
+        - $ref: '#/components/parameters/StudentId'
+        - { name: courseId, in: query, required: true, schema: { $ref: '#/components/schemas/Id' } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Progress' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /topics/{topicId}/steps/{stepIndex}/complete:
+    post:
+      tags: [Learning]
+      operationId: completeStep
+      summary: Mark a non-assessed step (video, activity) as completed.
+      description: Grants no XP (XP is awarded only for demonstrated mastery).
+      x-permission: learning:write
+      parameters:
+        - $ref: '#/components/parameters/TopicId'
+        - { name: stepIndex, in: path, required: true, schema: { type: integer, minimum: 0 } }
+      responses:
+        '204': { description: Recorded. }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /me/reviews/due:
+    get:
+      tags: [Learning]
+      operationId: listDueReviews
+      summary: Topics due for spaced-repetition review.
+      x-permission: learning:write
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [topicId, title, dueAt]
+                      properties:
+                        topicId: { $ref: '#/components/schemas/Id' }
+                        title: { type: string }
+                        dueAt: { type: string, format: date-time }
+
+  # ─────────────────────────── Assessment ───────────────────────────
+  /attempts:
+    post:
+      tags: [Assessment]
+      operationId: startAttempt
+      summary: Start a diagnostic, practice, mastery, review, chapter or mock-exam attempt.
+      description: |
+        Generates parameterised items server-side with a per-item seed.
+        Enforces entitlements and the free daily exercise limit. Timed tests get
+        a server-enforced `deadlineAt`.
+      x-permission: assessment:take
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type]
+              additionalProperties: false
+              properties:
+                type: { $ref: '#/components/schemas/AssessmentType' }
+                topicId: { $ref: '#/components/schemas/Id' }
+                chapterId: { $ref: '#/components/schemas/Id' }
+                courseId: { $ref: '#/components/schemas/Id' }
+                assignmentId: { $ref: '#/components/schemas/Id' }
+      responses:
+        '201':
+          description: Attempt created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Attempt' }
+        '402': { $ref: '#/components/responses/PaymentRequired' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /attempts/{attemptId}:
+    get:
+      tags: [Assessment]
+      operationId: getAttempt
+      summary: Attempt status and item list (no answers).
+      x-permission: assessment:take
+      parameters:
+        - $ref: '#/components/parameters/AttemptId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Attempt' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /attempts/{attemptId}/items/{position}:
+    get:
+      tags: [Assessment]
+      operationId: getAttemptItem
+      summary: One question instance as presented to the student.
+      x-permission: assessment:take
+      parameters:
+        - $ref: '#/components/parameters/AttemptId'
+        - $ref: '#/components/parameters/Position'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/QuestionInstance' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /attempts/{attemptId}/items/{position}/answer:
+    post:
+      tags: [Assessment]
+      operationId: answerItem
+      summary: Submit an answer; graded on the server.
+      description: |
+        Feedback follows the assessment's policy: practice returns a hint after
+        the first mistake and the full solution after the second; tests return
+        only `accepted: true` until the attempt is submitted.
+      x-permission: assessment:take
+      parameters:
+        - $ref: '#/components/parameters/AttemptId'
+        - $ref: '#/components/parameters/Position'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [response]
+              additionalProperties: false
+              properties:
+                response: { $ref: '#/components/schemas/AnswerResponse' }
+                clientElapsedMs: { type: integer, minimum: 0, description: Advisory only; the server measures its own time. }
+                offlineQueuedAt: { type: string, format: date-time, description: Set when the answer was queued offline (practice only). }
+      responses:
+        '200':
+          description: Graded (or accepted for tests).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AnswerFeedback' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '410': { $ref: '#/components/responses/Gone' }
+
+  /attempts/{attemptId}/submit:
+    post:
+      tags: [Assessment]
+      operationId: submitAttempt
+      summary: Finish an attempt and get the result.
+      x-permission: assessment:take
+      parameters:
+        - $ref: '#/components/parameters/AttemptId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: Result, including next-step recommendation (gap routing).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AttemptResult' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  # ────────────────────────── Gamification ──────────────────────────
+  /me/gamification:
+    get:
+      tags: [Gamification]
+      operationId: getMyGamification
+      summary: XP, level, streak, badges and today's quests.
+      x-permission: gamification:read
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GamificationSummary' }
+
+  /leagues/current:
+    get:
+      tags: [Gamification]
+      operationId: getCurrentLeague
+      summary: The caller's weekly league standings (nicknames only).
+      x-permission: gamification:read
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/League' }
+
+  # ──────────────────────────── Billing ────────────────────────────
+  /plans:
+    get:
+      tags: [Billing]
+      operationId: listPlans
+      summary: Available plans and prices (from config).
+      security: []
+      x-permission: public
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Plan' }
+
+  /promo-codes/validate:
+    post:
+      tags: [Billing]
+      operationId: validatePromoCode
+      summary: Check a promo code and preview the discounted price.
+      x-permission: billing:purchase
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, planCode]
+              additionalProperties: false
+              properties:
+                code: { type: string, maxLength: 32 }
+                planCode: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [valid]
+                properties:
+                  valid: { type: boolean }
+                  amount: { $ref: '#/components/schemas/Money' }
+                  discount: { $ref: '#/components/schemas/Money' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /checkout:
+    post:
+      tags: [Billing]
+      operationId: createCheckout
+      summary: Create an order and get the provider's payment URL.
+      description: |
+        Price is taken from config and snapshotted on the order. Card details
+        are entered on the provider's page; MathPath never receives them.
+      x-permission: billing:purchase
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [planCode, provider, studentIds]
+              additionalProperties: false
+              properties:
+                planCode: { type: string }
+                provider: { $ref: '#/components/schemas/PaymentProviderCode' }
+                studentIds:
+                  type: array
+                  minItems: 1
+                  items: { $ref: '#/components/schemas/Id' }
+                promoCode: { type: string, maxLength: 32 }
+                saveCardForRenewal: { type: boolean, default: true }
+                returnUrl: { type: string, format: uri, description: Must match an allow-listed origin. }
+      responses:
+        '201':
+          description: Order created.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [orderId, amount, redirectUrl, expiresAt]
+                properties:
+                  orderId: { $ref: '#/components/schemas/Id' }
+                  amount: { $ref: '#/components/schemas/Money' }
+                  redirectUrl: { type: string, format: uri }
+                  expiresAt: { type: string, format: date-time }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /orders/{orderId}:
+    get:
+      tags: [Billing]
+      operationId: getOrder
+      summary: Order status (polled by the return page).
+      x-permission: billing:read
+      parameters:
+        - { name: orderId, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [orderId, status]
+                properties:
+                  orderId: { $ref: '#/components/schemas/Id' }
+                  status: { type: string, enum: [created, pending, paid, cancelled, expired] }
+                  subscription: { $ref: '#/components/schemas/Subscription' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /subscriptions:
+    get:
+      tags: [Billing]
+      operationId: listSubscriptions
+      summary: The parent's subscriptions, payment methods and payment history.
+      x-permission: billing:read
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Subscription' }
+
+  /subscriptions/{subscriptionId}/cancel:
+    post:
+      tags: [Billing]
+      operationId: cancelSubscription
+      summary: Turn off auto-renewal; access continues until the period ends.
+      x-permission: billing:manage
+      parameters:
+        - { name: subscriptionId, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } }
+      responses:
+        '200':
+          description: Cancelled at period end.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Subscription' }
+
+  /trials:
+    post:
+      tags: [Billing]
+      operationId: startTrial
+      summary: Start the free trial (one per account, device and card).
+      x-permission: billing:purchase
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [studentIds, deviceToken]
+              additionalProperties: false
+              properties:
+                studentIds:
+                  type: array
+                  minItems: 1
+                  items: { $ref: '#/components/schemas/Id' }
+                deviceToken: { $ref: '#/components/schemas/DeviceToken' }
+      responses:
+        '201':
+          description: Trial started.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Subscription' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  # ─────────────────────── Payment callbacks ───────────────────────
+  /payments/payme:
+    post:
+      tags: [PaymentCallbacks]
+      operationId: paymeMerchantCallback
+      summary: Payme Merchant API endpoint (JSON-RPC).
+      description: |
+        Called by Payme only. Authenticated with the merchant credentials Payme
+        sends in the `Authorization` header before any parsing of business data.
+        Implements the provider's methods (check, create, perform, cancel, status,
+        statement). Repeated calls with the same transaction ID return the stored
+        result. Optionally restricted to the provider's published IP ranges at the proxy.
+        Body/response shapes follow Payme's specification and are validated in
+        the adapter, not in this contract.
+      security: []
+      x-permission: provider:payme
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '200':
+          description: JSON-RPC response (errors are also HTTP 200 per the provider's protocol).
+          content:
+            application/json:
+              schema: { type: object }
+
+  /payments/click/{stage}:
+    post:
+      tags: [PaymentCallbacks]
+      operationId: clickCallback
+      summary: Click merchant callbacks (prepare and complete).
+      description: |
+        Called by Click only. The `sign_string` is recomputed and compared in
+        constant time before the body is trusted. Idempotent by Click transaction ID.
+      security: []
+      x-permission: provider:click
+      parameters:
+        - { name: stage, in: path, required: true, schema: { type: string, enum: [prepare, complete] } }
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema: { type: object }
+      responses:
+        '200':
+          description: Provider-specific response.
+          content:
+            application/json:
+              schema: { type: object }
+
+  # ────────────────────────── Certificates ──────────────────────────
+  /students/{studentId}/certificates:
+    get:
+      tags: [Certificates]
+      operationId: listCertificates
+      summary: Certificates earned by a student.
+      x-permission: progress:read
+      parameters:
+        - $ref: '#/components/parameters/StudentId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Certificate' }
+
+  /public/certificates/{serial}:
+    get:
+      tags: [Certificates]
+      operationId: verifyCertificate
+      summary: Public verification target of the certificate QR code.
+      description: Shows only first name + last initial, course and date. Rate-limited.
+      security: []
+      x-permission: public
+      parameters:
+        - { name: serial, in: path, required: true, schema: { type: string, pattern: '^MP-[A-Z0-9]{4}-[A-Z0-9]{4}$' } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [serial, status, displayName, courseTitle, issuedAt]
+                properties:
+                  serial: { type: string }
+                  status: { type: string, enum: [valid, revoked] }
+                  displayName: { type: string }
+                  courseTitle: { type: string }
+                  issuedAt: { type: string, format: date }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ─────────────────────────── Classroom ───────────────────────────
+  /classes:
+    get:
+      tags: [Classroom]
+      operationId: listClasses
+      summary: Teacher's classes.
+      x-permission: classroom:manage
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Class' }
+    post:
+      tags: [Classroom]
+      operationId: createClass
+      summary: Create a class with a join code.
+      x-permission: classroom:manage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, grade]
+              additionalProperties: false
+              properties:
+                name: { type: string, maxLength: 60 }
+                grade: { type: integer, minimum: 1, maximum: 11 }
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Class' }
+
+  /classes/join:
+    post:
+      tags: [Classroom]
+      operationId: joinClass
+      summary: Student requests to join a class; a parent must approve sharing.
+      x-permission: classroom:join
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [joinCode]
+              additionalProperties: false
+              properties:
+                joinCode: { type: string, pattern: '^[A-Z0-9]{6}$' }
+      responses:
+        '202': { description: Pending parent approval. }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /classes/{classId}/assignments:
+    parameters:
+      - $ref: '#/components/parameters/ClassId'
+    post:
+      tags: [Classroom]
+      operationId: createAssignment
+      summary: Assign a topic or test with a due date.
+      x-permission: classroom:manage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, dueAt]
+              additionalProperties: false
+              properties:
+                title: { type: string, maxLength: 120 }
+                topicId: { $ref: '#/components/schemas/Id' }
+                assessmentId: { $ref: '#/components/schemas/Id' }
+                dueAt: { type: string, format: date-time }
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Assignment' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+  /classes/{classId}/analytics:
+    parameters:
+      - $ref: '#/components/parameters/ClassId'
+    get:
+      tags: [Classroom]
+      operationId: getClassAnalytics
+      summary: Class mastery heat map and assignment completion.
+      x-permission: classroom:manage
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [students, topics, cells]
+                properties:
+                  students:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        studentId: { $ref: '#/components/schemas/Id' }
+                        displayName: { type: string }
+                  topics:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        topicId: { $ref: '#/components/schemas/Id' }
+                        title: { type: string }
+                  cells:
+                    type: array
+                    description: Sparse matrix of mastery values.
+                    items:
+                      type: object
+                      properties:
+                        studentId: { $ref: '#/components/schemas/Id' }
+                        topicId: { $ref: '#/components/schemas/Id' }
+                        mastery: { type: number, minimum: 0, maximum: 1 }
+
+  # ──────────────────────────── Reports ────────────────────────────
+  /students/{studentId}/reports/weekly:
+    get:
+      tags: [Reports]
+      operationId: getWeeklyReport
+      summary: Weekly report for parents (also sent by notification).
+      x-permission: progress:read
+      parameters:
+        - $ref: '#/components/parameters/StudentId'
+        - { name: weekStart, in: query, required: false, schema: { type: string, format: date } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WeeklyReport' }
+
+  # ──────────────────────────── Studio ────────────────────────────
+  /studio/topics/{topicId}/versions:
+    parameters:
+      - $ref: '#/components/parameters/TopicId'
+    get:
+      tags: [Studio]
+      operationId: listTopicVersions
+      summary: Version history of a topic.
+      x-permission: content:author
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/ContentVersionSummary' }
+    post:
+      tags: [Studio]
+      operationId: createTopicDraft
+      summary: Create a new draft (copied from the latest version).
+      x-permission: content:author
+      responses:
+        '201':
+          description: Draft created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TopicVersion' }
+
+  /studio/topic-versions/{versionId}:
+    parameters:
+      - $ref: '#/components/parameters/VersionId'
+    get:
+      tags: [Studio]
+      operationId: getTopicVersion
+      summary: Full topic version with localised fields.
+      x-permission: content:author
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TopicVersion' }
+    put:
+      tags: [Studio]
+      operationId: saveTopicDraft
+      summary: Save a draft. Only drafts in `draft` or `changes_requested` can be edited.
+      x-permission: content:author
+      parameters:
+        - { name: If-Match, in: header, required: true, schema: { type: string }, description: ETag of the version being edited (prevents lost updates). }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TopicVersionInput' }
+      responses:
+        '200':
+          description: Saved.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TopicVersion' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '412': { $ref: '#/components/responses/PreconditionFailed' }
+
+  /studio/question-templates/{templateId}/versions:
+    parameters:
+      - { name: templateId, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } }
+    post:
+      tags: [Studio]
+      operationId: saveQuestionDraft
+      summary: Create or update a draft of a question template.
+      x-permission: content:author
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/QuestionTemplateInput' }
+      responses:
+        '201':
+          description: Saved.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ContentVersionSummary' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /studio/question-templates/preview:
+    post:
+      tags: [Studio]
+      operationId: previewQuestion
+      summary: Generate sample instances (with answers) for authoring.
+      description: Runs the sandboxed engine with N random seeds; reports constraint failures.
+      x-permission: content:author
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [template]
+              properties:
+                template: { $ref: '#/components/schemas/QuestionTemplateInput' }
+                samples: { type: integer, minimum: 1, maximum: 20, default: 5 }
+                locale: { $ref: '#/components/schemas/Locale' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  samples:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        params: { type: object }
+                        instance: { $ref: '#/components/schemas/QuestionInstance' }
+                        answer: { type: object }
+                  warnings:
+                    type: array
+                    items: { type: string }
+
+  /studio/versions/{versionId}/submit:
+    parameters:
+      - $ref: '#/components/parameters/VersionId'
+    post:
+      tags: [Studio]
+      operationId: submitForReview
+      summary: Move a draft (topic or question) to review.
+      x-permission: content:author
+      responses:
+        '200':
+          description: In review.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ContentVersionSummary' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /studio/versions/{versionId}/review:
+    parameters:
+      - $ref: '#/components/parameters/VersionId'
+    post:
+      tags: [Studio]
+      operationId: reviewVersion
+      summary: Approve or request changes. The reviewer must not be the author.
+      x-permission: content:review
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision]
+              additionalProperties: false
+              properties:
+                decision: { type: string, enum: [approved, changes_requested] }
+                comments:
+                  type: array
+                  items:
+                    type: object
+                    required: [text]
+                    properties:
+                      anchor: { type: string, description: JSON pointer to the commented field. }
+                      text: { type: string, maxLength: 2000 }
+      responses:
+        '200':
+          description: Decision recorded.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ContentVersionSummary' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /studio/versions/{versionId}/publish:
+    parameters:
+      - $ref: '#/components/parameters/VersionId'
+    post:
+      tags: [Studio]
+      operationId: publishVersion
+      summary: Publish an approved version (it becomes immutable).
+      x-permission: content:publish
+      responses:
+        '200':
+          description: Published.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ContentVersionSummary' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /studio/media/uploads:
+    post:
+      tags: [Studio]
+      operationId: createMediaUpload
+      summary: Get a presigned upload URL for a video, image or subtitle file.
+      x-permission: content:author
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [kind, contentType, sizeBytes]
+              additionalProperties: false
+              properties:
+                kind: { type: string, enum: [video, image, subtitle] }
+                contentType: { type: string, enum: [video/mp4, image/png, image/jpeg, image/svg+xml, text/vtt] }
+                sizeBytes: { type: integer, minimum: 1, maximum: 2147483648 }
+                locale: { $ref: '#/components/schemas/Locale' }
+      responses:
+        '201':
+          description: Upload slot created.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [mediaId, uploadUrl, expiresAt]
+                properties:
+                  mediaId: { $ref: '#/components/schemas/Id' }
+                  uploadUrl: { type: string, format: uri }
+                  expiresAt: { type: string, format: date-time }
+
+  # ───────────────────────────── Admin ─────────────────────────────
+  /admin/users:
+    get:
+      tags: [Admin]
+      operationId: adminSearchUsers
+      summary: Search users by phone, name or ID. Access is audited.
+      x-permission: admin:users
+      parameters:
+        - { name: q, in: query, required: true, schema: { type: string, minLength: 3, maxLength: 64 } }
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/AdminUser' }
+                  nextCursor: { type: [string, 'null'] }
+
+  /admin/users/{userId}:
+    parameters:
+      - { name: userId, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } }
+    patch:
+      tags: [Admin]
+      operationId: adminUpdateUser
+      summary: Change status or roles. Granting staff roles requires the target to have MFA.
+      x-permission: admin:users
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              additionalProperties: false
+              properties:
+                status: { type: string, enum: [active, locked, suspended] }
+                addRoles:
+                  type: array
+                  items: { $ref: '#/components/schemas/Role' }
+                removeRoles:
+                  type: array
+                  items: { $ref: '#/components/schemas/Role' }
+                reason: { type: string, minLength: 5, maxLength: 500 }
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminUser' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /admin/risk-reviews:
+    get:
+      tags: [Admin]
+      operationId: adminListRiskReviews
+      summary: Accounts flagged by the risk engine.
+      x-permission: admin:risk
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [open, cleared, restricted, banned] } }
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/RiskReview' }
+                  nextCursor: { type: [string, 'null'] }
+
+  /admin/risk-reviews/{reviewId}/decision:
+    post:
+      tags: [Admin]
+      operationId: adminDecideRiskReview
+      summary: Clear, restrict or ban a flagged account.
+      x-permission: admin:risk
+      parameters:
+        - { name: reviewId, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision, notes]
+              additionalProperties: false
+              properties:
+                decision: { type: string, enum: [cleared, restricted, banned] }
+                notes: { type: string, maxLength: 1000 }
+      responses:
+        '200':
+          description: Decided.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RiskReview' }
+
+  /admin/payments/{paymentId}/refunds:
+    post:
+      tags: [Admin]
+      operationId: adminRefundPayment
+      summary: Refund a payment fully or partially through its provider.
+      x-permission: admin:billing
+      parameters:
+        - { name: paymentId, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } }
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amountTiyin, reason]
+              additionalProperties: false
+              properties:
+                amountTiyin: { type: integer, minimum: 1 }
+                reason: { type: string, minLength: 5, maxLength: 500 }
+      responses:
+        '202':
+          description: Refund requested.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [refundId, status]
+                properties:
+                  refundId: { $ref: '#/components/schemas/Id' }
+                  status: { type: string, enum: [requested, succeeded, failed] }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /admin/promo-codes:
+    post:
+      tags: [Admin]
+      operationId: adminCreatePromoCode
+      summary: Create a promo code.
+      x-permission: admin:billing
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, discountType, value, validFrom, validTo]
+              additionalProperties: false
+              properties:
+                code: { type: string, pattern: '^[A-Z0-9_-]{4,32}$' }
+                discountType: { type: string, enum: [percent, fixed] }
+                value: { type: integer, minimum: 1 }
+                planCodes:
+                  type: array
+                  items: { type: string }
+                maxRedemptions: { type: integer, minimum: 1 }
+                perUserLimit: { type: integer, minimum: 1, default: 1 }
+                validFrom: { type: string, format: date-time }
+                validTo: { type: string, format: date-time }
+      responses:
+        '201': { description: Created. }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /admin/audit-log:
+    get:
+      tags: [Admin]
+      operationId: adminListAuditLog
+      summary: Search the append-only audit log.
+      x-permission: admin:audit
+      parameters:
+        - { name: actorId, in: query, schema: { $ref: '#/components/schemas/Id' } }
+        - { name: targetId, in: query, schema: { $ref: '#/components/schemas/Id' } }
+        - { name: action, in: query, schema: { type: string } }
+        - { name: from, in: query, schema: { type: string, format: date-time } }
+        - { name: to, in: query, schema: { type: string, format: date-time } }
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/AuditEntry' }
+                  nextCursor: { type: [string, 'null'] }
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: mp_at
+      description: Short-lived access token in an HttpOnly, Secure, SameSite=Lax cookie (web apps).
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Access token for native mobile clients.
+
+  headers:
+    SessionCookies:
+      description: Sets `mp_at` (access, 15 min), `mp_rt` (refresh, path-scoped to /auth/refresh) and `mp_csrf`.
+      schema: { type: string }
+
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: Client-generated UUID. Repeats within 24 h return the original response.
+      schema: { type: string, format: uuid }
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      schema: { type: string }
+    Limit:
+      name: limit
+      in: query
+      required: false
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+    ChildId:
+      name: childId
+      in: path
+      required: true
+      schema: { $ref: '#/components/schemas/Id' }
+    StudentId:
+      name: studentId
+      in: path
+      required: true
+      description: Use `me` for the signed-in student.
+      schema:
+        oneOf:
+          - $ref: '#/components/schemas/Id'
+          - { type: string, const: me }
+    TopicId:
+      name: topicId
+      in: path
+      required: true
+      schema: { $ref: '#/components/schemas/Id' }
+    AttemptId:
+      name: attemptId
+      in: path
+      required: true
+      schema: { $ref: '#/components/schemas/Id' }
+    Position:
+      name: position
+      in: path
+      required: true
+      schema: { type: integer, minimum: 0 }
+    ClassId:
+      name: classId
+      in: path
+      required: true
+      schema: { $ref: '#/components/schemas/Id' }
+    VersionId:
+      name: versionId
+      in: path
+      required: true
+      schema: { $ref: '#/components/schemas/Id' }
+
+  responses:
+    BadRequest:
+      description: The request is malformed or fails validation.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Unauthorized:
+      description: Not signed in, or credentials invalid.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    PaymentRequired:
+      description: Content needs a subscription, or the free daily limit is reached.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Forbidden:
+      description: Signed in but not allowed (role or object-level check).
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    NotFound:
+      description: Not found (also returned instead of 403 where existence must not leak).
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Conflict:
+      description: State conflict (duplicate, wrong state transition).
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Gone:
+      description: The attempt has expired.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    PreconditionFailed:
+      description: The resource changed since it was read (ETag mismatch).
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Unprocessable:
+      description: Valid shape, but a business rule rejects it.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Locked:
+      description: Temporarily locked after repeated failures.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    CaptchaRequired:
+      description: Risk is elevated; retry with a CAPTCHA token.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    TooManyRequests:
+      description: Rate limit exceeded. See `Retry-After`.
+      headers:
+        Retry-After:
+          schema: { type: integer }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+
+  schemas:
+    Id:
+      type: string
+      format: uuid
+      description: UUIDv7.
+    PhoneE164:
+      type: string
+      pattern: '^\+[1-9][0-9]{7,14}$'
+      examples: ['+998901234567']
+    PersonName:
+      type: string
+      minLength: 1
+      maxLength: 60
+    Locale:
+      type: string
+      enum: [uz-Latn, ru, en]
+    LocalizedText:
+      type: object
+      description: Text per locale (CMS only; other endpoints return a plain string in the caller's locale).
+      properties:
+        uz-Latn: { type: string }
+        ru: { type: string }
+        en: { type: string }
+      additionalProperties: false
+    DeviceToken:
+      type: string
+      maxLength: 512
+      description: Opaque, signed device identifier issued by the API; used for device limits and risk.
+    Role:
+      type: string
+      enum: [student, parent, teacher, author, reviewer, admin, support]
+    Money:
+      type: object
+      required: [amountTiyin, currency]
+      properties:
+        amountTiyin: { type: integer, description: 1 UZS = 100 tiyin. }
+        currency: { type: string, const: UZS }
+
+    Problem:
+      type: object
+      description: RFC 9457 problem details.
+      required: [type, title, status, requestId]
+      properties:
+        type: { type: string, format: uri-reference, examples: ['https://docs.mathpath.uz/errors/daily-limit-reached'] }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        code: { type: string, description: 'Stable machine code, for example DAILY_LIMIT_REACHED.' }
+        requestId: { type: string }
+        errors:
+          type: array
+          description: Field-level validation errors.
+          items:
+            type: object
+            properties:
+              field: { type: string }
+              message: { type: string }
+
+    RegistrationTicket:
+      type: object
+      required: [registrationToken, expiresAt]
+      properties:
+        registrationToken: { type: string }
+        expiresAt: { type: string, format: date-time }
+
+    SessionInfo:
+      type: object
+      required: [userId, roles, mfaRequired, accessExpiresAt]
+      properties:
+        userId: { $ref: '#/components/schemas/Id' }
+        roles:
+          type: array
+          items: { $ref: '#/components/schemas/Role' }
+        mfaRequired: { type: boolean }
+        accessExpiresAt: { type: string, format: date-time }
+        accessToken: { type: string, description: Mobile clients only; web uses cookies. }
+        refreshToken: { type: string, description: Mobile clients only. }
+
+    SessionSummary:
+      type: object
+      required: [id, createdAt, lastSeenAt, current]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        device: { type: string, examples: ['Chrome on Android'] }
+        approxLocation: { type: string }
+        createdAt: { type: string, format: date-time }
+        lastSeenAt: { type: string, format: date-time }
+        current: { type: boolean }
+
+    Me:
+      type: object
+      required: [id, firstName, roles, locale, entitlements]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        firstName: { type: string }
+        lastName: { type: [string, 'null'] }
+        roles:
+          type: array
+          items: { $ref: '#/components/schemas/Role' }
+        locale: { $ref: '#/components/schemas/Locale' }
+        mfaEnabled: { type: boolean }
+        student:
+          type: object
+          properties:
+            nickname: { type: string }
+            grade: { type: integer }
+            avatarCode: { type: string }
+        entitlements:
+          type: object
+          required: [plan, dailyExercisesLeft]
+          properties:
+            plan: { type: string, enum: [free, trial, paid] }
+            dailyExercisesLeft: { type: [integer, 'null'], description: null means unlimited. }
+            features:
+              type: array
+              items: { type: string, examples: [mock_exams, detailed_analytics, parent_reports] }
+
+    Child:
+      type: object
+      required: [id, firstName, nickname, grade]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        firstName: { type: string }
+        nickname: { type: string }
+        nicknameStatus: { type: string, enum: [pending, approved, rejected] }
+        grade: { type: integer }
+        birthYear: { type: [integer, 'null'] }
+        dailyTimeLimitMin: { type: [integer, 'null'] }
+        plan: { type: string, enum: [free, trial, paid] }
+
+    ConsentInput:
+      type: object
+      required: [policyVersion, scopes, otpChallengeId, otpCode]
+      additionalProperties: false
+      properties:
+        policyVersion: { type: string }
+        scopes:
+          type: array
+          items: { type: string, enum: [learning, leaderboard, teacher_sharing, marketing_to_parent] }
+        otpChallengeId: { $ref: '#/components/schemas/Id' }
+        otpCode: { type: string, pattern: '^[0-9]{4,8}$' }
+
+    Consent:
+      type: object
+      required: [id, policyVersion, scopes, grantedAt]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        policyVersion: { type: string }
+        scopes:
+          type: array
+          items: { type: string }
+        grantedAt: { type: string, format: date-time }
+        revokedAt: { type: [string, 'null'], format: date-time }
+
+    DataRequest:
+      type: object
+      required: [id, type, status]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        type: { type: string, enum: [export, deletion] }
+        status: { type: string, enum: [pending, processing, ready, completed, cancelled] }
+        scheduledFor: { type: [string, 'null'], format: date-time }
+        downloadUrl: { type: [string, 'null'], format: uri }
+
+    Track:
+      type: object
+      required: [id, slug, title, courses]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        slug: { type: string }
+        title: { type: string }
+        courses:
+          type: array
+          items:
+            type: object
+            required: [id, slug, title]
+            properties:
+              id: { $ref: '#/components/schemas/Id' }
+              slug: { type: string }
+              title: { type: string }
+              grade: { type: [integer, 'null'] }
+
+    CourseTree:
+      type: object
+      required: [id, title, chapters]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        title: { type: string }
+        chapters:
+          type: array
+          items:
+            type: object
+            required: [id, title, topics]
+            properties:
+              id: { $ref: '#/components/schemas/Id' }
+              title: { type: string }
+              topics:
+                type: array
+                items:
+                  type: object
+                  required: [id, title, isFree, locked]
+                  properties:
+                    id: { $ref: '#/components/schemas/Id' }
+                    title: { type: string }
+                    isFree: { type: boolean }
+                    locked: { type: boolean, description: True when the caller lacks entitlement. }
+                    state: { $ref: '#/components/schemas/MasteryState' }
+                    mastery: { type: [number, 'null'], minimum: 0, maximum: 1 }
+
+    MasteryState:
+      type: string
+      enum: [not_started, learning, mastered, needs_review]
+
+    Lesson:
+      type: object
+      required: [topicId, versionId, title, steps]
+      properties:
+        topicId: { $ref: '#/components/schemas/Id' }
+        versionId: { $ref: '#/components/schemas/Id' }
+        title: { type: string }
+        steps:
+          type: array
+          items:
+            type: object
+            required: [index, type, completed]
+            properties:
+              index: { type: integer }
+              type: { type: string, enum: [video, activity, practice, mastery_test, review] }
+              completed: { type: boolean }
+              mediaId: { $ref: '#/components/schemas/Id' }
+              activity: { type: string, enum: [drag_drop, number_line, fraction_model, step_solver] }
+              config: { type: object, description: Activity configuration (no answers for graded activities). }
+              prompt: { type: string }
+
+    LearningPath:
+      type: object
+      required: [courseId, items, generatedAt]
+      properties:
+        courseId: { $ref: '#/components/schemas/Id' }
+        generatedAt: { type: string, format: date-time }
+        items:
+          type: array
+          items:
+            type: object
+            required: [topicId, title, reason, state]
+            properties:
+              topicId: { $ref: '#/components/schemas/Id' }
+              title: { type: string }
+              reason: { type: string, enum: [next_in_course, prerequisite_gap, review_due, assigned] }
+              state: { $ref: '#/components/schemas/MasteryState' }
+
+    Progress:
+      type: object
+      required: [courseId, topics, timeSpentMin, weakTopics]
+      properties:
+        courseId: { $ref: '#/components/schemas/Id' }
+        timeSpentMin: { type: integer }
+        topics:
+          type: array
+          items:
+            type: object
+            required: [topicId, title, state]
+            properties:
+              topicId: { $ref: '#/components/schemas/Id' }
+              title: { type: string }
+              state: { $ref: '#/components/schemas/MasteryState' }
+              mastery: { type: [number, 'null'] }
+        weakTopics:
+          type: array
+          items: { $ref: '#/components/schemas/Id' }
+        predictedScore:
+          type: [object, 'null']
+          description: Only for exam-prep courses; always labelled as an estimate in the UI.
+          properties:
+            value: { type: number }
+            max: { type: number }
+            confidence: { type: string, enum: [low, medium, high] }
+
+    AssessmentType:
+      type: string
+      enum: [diagnostic, practice, mastery, review, chapter, mock_exam]
+
+    Attempt:
+      type: object
+      required: [id, type, status, itemCount, startedAt]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        type: { $ref: '#/components/schemas/AssessmentType' }
+        status: { type: string, enum: [in_progress, submitted, expired, invalidated] }
+        itemCount: { type: integer, description: For adaptive diagnostics this is the maximum. }
+        answeredCount: { type: integer }
+        startedAt: { type: string, format: date-time }
+        deadlineAt: { type: [string, 'null'], format: date-time }
+        adaptive: { type: boolean, description: Diagnostic attempts reveal one item at a time. }
+
+    QuestionInstance:
+      type: object
+      description: What the student sees. Contains no answer.
+      required: [position, type, stem]
+      properties:
+        position: { type: integer }
+        type: { $ref: '#/components/schemas/QuestionType' }
+        stem: { type: string, description: Text with inline LaTeX delimited by `$...$`. }
+        choices:
+          type: array
+          description: Shuffled per instance. IDs are opaque per instance.
+          items:
+            type: object
+            required: [id, label]
+            properties:
+              id: { type: string }
+              label: { type: string }
+        matching:
+          type: object
+          properties:
+            left:
+              type: array
+              items: { type: object, properties: { id: { type: string }, label: { type: string } } }
+            right:
+              type: array
+              items: { type: object, properties: { id: { type: string }, label: { type: string } } }
+        ordering:
+          type: array
+          items: { type: object, properties: { id: { type: string }, label: { type: string } } }
+        inputHint: { type: string, description: For example "fraction" or "integer" for the math keyboard. }
+        media:
+          type: array
+          items: { type: string, format: uri }
+        previousResponse: { $ref: '#/components/schemas/AnswerResponse' }
+
+    QuestionType:
+      type: string
+      enum: [single_choice, multiple_choice, numeric, formula, matching, ordering]
+
+    AnswerResponse:
+      description: The student's answer; the shape depends on the question type.
+      oneOf:
+        - type: object
+          title: ChoiceResponse
+          required: [choiceIds]
+          additionalProperties: false
+          properties:
+            choiceIds:
+              type: array
+              minItems: 1
+              maxItems: 10
+              items: { type: string, maxLength: 16 }
+        - type: object
+          title: ValueResponse
+          required: [value]
+          additionalProperties: false
+          properties:
+            value: { type: string, maxLength: 200, description: Numeric or LaTeX/ASCII-math expression. }
+        - type: object
+          title: PairsResponse
+          required: [pairs]
+          additionalProperties: false
+          properties:
+            pairs:
+              type: array
+              maxItems: 20
+              items:
+                type: array
+                minItems: 2
+                maxItems: 2
+                items: { type: string, maxLength: 16 }
+        - type: object
+          title: OrderResponse
+          required: [order]
+          additionalProperties: false
+          properties:
+            order:
+              type: array
+              maxItems: 20
+              items: { type: string, maxLength: 16 }
+
+    AnswerFeedback:
+      type: object
+      required: [accepted]
+      properties:
+        accepted: { type: boolean }
+        correct: { type: [boolean, 'null'], description: null in tests until submission. }
+        triesLeft: { type: integer }
+        hint: { type: [string, 'null'] }
+        solution: { type: [string, 'null'], description: 'Full worked solution, shown per feedback policy.' }
+        xpAwarded: { type: integer, description: Shown optimistically; the ledger is authoritative. }
+        nextPosition: { type: [integer, 'null'], description: For adaptive diagnostics. }
+
+    AttemptResult:
+      type: object
+      required: [attemptId, score, maxScore, passed, byTopic]
+      properties:
+        attemptId: { $ref: '#/components/schemas/Id' }
+        score: { type: number }
+        maxScore: { type: number }
+        passed: { type: [boolean, 'null'] }
+        byTopic:
+          type: array
+          items:
+            type: object
+            properties:
+              topicId: { $ref: '#/components/schemas/Id' }
+              title: { type: string }
+              correct: { type: integer }
+              total: { type: integer }
+        review:
+          type: array
+          description: Per-item correctness and solutions, available after submission.
+          items:
+            type: object
+            properties:
+              position: { type: integer }
+              correct: { type: boolean }
+              solution: { type: string }
+        recommendation:
+          type: object
+          description: Output of the gap router.
+          properties:
+            action: { type: string, enum: [continue, retry_practice, prerequisite_review, take_break] }
+            topicId: { $ref: '#/components/schemas/Id' }
+            message: { type: string }
+
+    GamificationSummary:
+      type: object
+      required: [xpTotal, level, levelProgress, streak, badges, quests]
+      properties:
+        xpTotal: { type: integer }
+        level: { type: integer }
+        levelProgress: { type: number, minimum: 0, maximum: 1 }
+        streak:
+          type: object
+          properties:
+            current: { type: integer }
+            longest: { type: integer }
+            freezesLeft: { type: integer }
+            activeToday: { type: boolean }
+        badges:
+          type: array
+          items:
+            type: object
+            properties:
+              code: { type: string }
+              title: { type: string }
+              awardedAt: { type: string, format: date-time }
+        quests:
+          type: array
+          items:
+            type: object
+            properties:
+              code: { type: string }
+              title: { type: string }
+              progress: { type: integer }
+              target: { type: integer }
+              completed: { type: boolean }
+
+    League:
+      type: object
+      required: [weekStart, tier, endsAt, standings]
+      properties:
+        weekStart: { type: string, format: date }
+        tier: { type: integer }
+        endsAt: { type: string, format: date-time }
+        standings:
+          type: array
+          items:
+            type: object
+            required: [rank, nickname, weeklyXp, isMe]
+            properties:
+              rank: { type: integer }
+              nickname: { type: string, description: Never the child's full name. }
+              avatarCode: { type: string }
+              weeklyXp: { type: integer }
+              isMe: { type: boolean }
+
+    PaymentProviderCode:
+      type: string
+      enum: [payme, click]
+      description: More providers are added as adapters (ADR-0008).
+
+    Plan:
+      type: object
+      required: [code, interval, price, maxStudents, features]
+      properties:
+        code: { type: string, examples: [individual_monthly, family_annual] }
+        title: { type: string }
+        interval: { type: string, enum: [month, year] }
+        price: { $ref: '#/components/schemas/Money' }
+        maxStudents: { type: integer }
+        trialDays: { type: integer }
+        features:
+          type: array
+          items: { type: string }
+
+    Subscription:
+      type: object
+      required: [id, planCode, status, currentPeriodEnd, cancelAtPeriodEnd, studentIds]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        planCode: { type: string }
+        status: { type: string, enum: [trialing, active, past_due, cancelled, expired] }
+        currentPeriodEnd: { type: string, format: date-time }
+        cancelAtPeriodEnd: { type: boolean }
+        studentIds:
+          type: array
+          items: { $ref: '#/components/schemas/Id' }
+        paymentMethod:
+          type: [object, 'null']
+          properties:
+            provider: { $ref: '#/components/schemas/PaymentProviderCode' }
+            cardMask: { type: string, examples: ['8600 **** **** 1234'] }
+            cardExpiry: { type: string }
+        payments:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { $ref: '#/components/schemas/Id' }
+              amount: { $ref: '#/components/schemas/Money' }
+              status: { type: string }
+              paidAt: { type: string, format: date-time }
+              receiptUrl: { type: [string, 'null'], format: uri }
+
+    Certificate:
+      type: object
+      required: [serial, courseTitle, issuedAt, pdfUrl, verifyUrl]
+      properties:
+        serial: { type: string }
+        courseTitle: { type: string }
+        issuedAt: { type: string, format: date }
+        pdfUrl: { type: string, format: uri }
+        verifyUrl: { type: string, format: uri }
+
+    Class:
+      type: object
+      required: [id, name, grade, joinCode, studentCount]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        name: { type: string }
+        grade: { type: integer }
+        joinCode: { type: string }
+        studentCount: { type: integer }
+
+    Assignment:
+      type: object
+      required: [id, classId, title, dueAt]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        classId: { $ref: '#/components/schemas/Id' }
+        title: { type: string }
+        topicId: { type: [string, 'null'], format: uuid }
+        assessmentId: { type: [string, 'null'], format: uuid }
+        dueAt: { type: string, format: date-time }
+
+    WeeklyReport:
+      type: object
+      required: [studentId, weekStart, minutesActive, topicsMastered, highlights, concerns]
+      properties:
+        studentId: { $ref: '#/components/schemas/Id' }
+        weekStart: { type: string, format: date }
+        minutesActive: { type: integer }
+        daysActive: { type: integer }
+        topicsMastered:
+          type: array
+          items: { type: string }
+        highlights:
+          type: array
+          items: { type: string }
+        concerns:
+          type: array
+          items: { type: string }
+        suggestedNextSteps:
+          type: array
+          items: { type: string }
+
+    ContentStatus:
+      type: string
+      enum: [draft, in_review, changes_requested, approved, published, archived]
+
+    ContentVersionSummary:
+      type: object
+      required: [id, versionNo, status, authorId, updatedAt]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        versionNo: { type: integer }
+        status: { $ref: '#/components/schemas/ContentStatus' }
+        authorId: { $ref: '#/components/schemas/Id' }
+        updatedAt: { type: string, format: date-time }
+        publishedAt: { type: [string, 'null'], format: date-time }
+
+    TopicVersionInput:
+      type: object
+      required: [title, steps]
+      additionalProperties: false
+      properties:
+        title: { $ref: '#/components/schemas/LocalizedText' }
+        summary: { $ref: '#/components/schemas/LocalizedText' }
+        steps:
+          type: array
+          maxItems: 10
+          items:
+            type: object
+            required: [type]
+            properties:
+              type: { type: string, enum: [video, activity, practice, mastery_test, review] }
+              mediaId: { $ref: '#/components/schemas/Id' }
+              activity: { type: string }
+              config: { type: object }
+              prompt: { $ref: '#/components/schemas/LocalizedText' }
+        questionPool:
+          type: object
+          properties:
+            practice:
+              type: array
+              items: { $ref: '#/components/schemas/Id' }
+            mastery:
+              type: array
+              items: { $ref: '#/components/schemas/Id' }
+            review:
+              type: array
+              items: { $ref: '#/components/schemas/Id' }
+
+    TopicVersion:
+      allOf:
+        - $ref: '#/components/schemas/ContentVersionSummary'
+        - $ref: '#/components/schemas/TopicVersionInput'
+        - type: object
+          properties:
+            etag: { type: string }
+            reviews:
+              type: array
+              items:
+                type: object
+                properties:
+                  reviewerId: { $ref: '#/components/schemas/Id' }
+                  decision: { type: string }
+                  comments: { type: array, items: { type: object } }
+                  createdAt: { type: string, format: date-time }
+
+    QuestionTemplateInput:
+      type: object
+      description: See docs/database-schema.md §4.2 for the full body format.
+      required: [type, difficulty, variables, stem, answer]
+      properties:
+        type: { $ref: '#/components/schemas/QuestionType' }
+        difficulty: { type: integer, minimum: 1, maximum: 5 }
+        skills:
+          type: array
+          items: { type: string }
+        variables: { type: object }
+        constraints:
+          type: array
+          items: { type: string, maxLength: 200 }
+        stem: { $ref: '#/components/schemas/LocalizedText' }
+        answer: { type: object }
+        choices: { type: array, items: { type: object } }
+        distractors:
+          type: array
+          items: { type: string }
+        hints:
+          type: array
+          items: { $ref: '#/components/schemas/LocalizedText' }
+        solution: { $ref: '#/components/schemas/LocalizedText' }
+
+    AdminUser:
+      type: object
+      required: [id, firstName, roles, status, createdAt]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        firstName: { type: string }
+        lastName: { type: [string, 'null'] }
+        phoneMasked: { type: [string, 'null'], examples: ['+998 90 *** ** 67'] }
+        roles:
+          type: array
+          items: { $ref: '#/components/schemas/Role' }
+        status: { type: string }
+        riskLevel: { type: string }
+        mfaEnabled: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        lastLoginAt: { type: [string, 'null'], format: date-time }
+
+    RiskReview:
+      type: object
+      required: [id, subjectUserId, reason, status, createdAt]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        subjectUserId: { $ref: '#/components/schemas/Id' }
+        reason: { type: string }
+        signals:
+          type: array
+          items:
+            type: object
+            properties:
+              type: { type: string }
+              scoreDelta: { type: integer }
+              at: { type: string, format: date-time }
+        status: { type: string, enum: [open, cleared, restricted, banned] }
+        createdAt: { type: string, format: date-time }
+
+    AuditEntry:
+      type: object
+      required: [id, action, createdAt]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        actorId: { type: [string, 'null'], format: uuid }
+        action: { type: string }
+        targetType: { type: string }
+        targetId: { type: [string, 'null'], format: uuid }
+        requestId: { type: string }
+        metadata: { type: object }
+        createdAt: { type: string, format: date-time }
