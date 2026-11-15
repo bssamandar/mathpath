@@ -109,7 +109,7 @@ mathpath/
 │   ├── i18n/             # Message catalogues uz-Latn / ru / en + helpers
 │   ├── ui/               # Accessible design-system components (shared by web/studio)
 │   ├── db/               # Kysely schema types, migrations (up/down), seeds
-│   └── tooling/          # eslint, prettier, tsconfig presets
+│   └── (tooling)         # lint, format, tsconfig: kept as root config files for now
 ├── config/           # Business rules (YAML), one file per domain, see §6
 ├── infra/            # docker-compose, Dockerfiles, reverse proxy/WAF config
 ├── docs/             # This folder
