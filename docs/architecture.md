@@ -1,13 +1,13 @@
 # MathPath: Architecture Overview
 
-| | |
-|---|---|
-| Status | Draft for approval (Phase 3) |
-| Version | 0.1.0 |
-| Date | 2026-11-15 |
+|         |                                                                                                         |
+| ------- | ------------------------------------------------------------------------------------------------------- |
+| Status  | Draft for approval (Phase 3)                                                                            |
+| Version | 0.1.0                                                                                                   |
+| Date    | 2026-11-15                                                                                              |
 | Related | [PRD](PRD.md) · [Database schema](database-schema.md) · [API contract](api/openapi.yaml) · [ADRs](adr/) |
 
-This document explains how the system is put together and *why*. The ADRs
+This document explains how the system is put together and _why_. The ADRs
 in `docs/adr/` record each major decision with the alternatives considered.
 
 ---
@@ -132,28 +132,29 @@ preview only through an API call.
 
 ## 4. API modules (bounded contexts)
 
-| Module | Owns | Talks to |
-|---|---|---|
-| `identity` | Users, roles, phone OTP, passwords, sessions, refresh tokens, 2FA, child PIN login | `risk`, `audit`, `notifications` |
-| `family` | Parent–child links, parental consent records | `identity`, `audit` |
-| `privacy` | Data export, account deletion (grace period → hard delete) | All modules through a `PersonalDataProvider` interface |
-| `risk` | Device fingerprints, velocity rules, risk score, CAPTCHA escalation, manual review queue | `identity`, `billing`, `audit` |
-| `catalogue` | Tracks, courses, chapters, topics, knowledge graph (read side, published only) | `content` (published versions) |
-| `content` | Drafts, versions, review workflow, question templates, media assets (CMS write side) | `catalogue`, `media`, `audit` |
-| `media` | Uploads, transcoding jobs, HLS keys, signed playback URLs | `worker`, `entitlements` |
-| `assessment` | Assessments, attempts, item generation, server-side grading, anti-cheat signals | `question-engine`, `learning`, `risk` |
-| `learning` | Topic progress, mastery, spaced repetition, diagnostic → learning path, gap routing | `catalogue`, `assessment` |
-| `entitlements` | "May this user access X?" (free tier, subscription, daily limits) | `billing`, `catalogue` |
-| `billing` | Plans (from config), subscriptions, payments, refunds, provider adapters, promo codes, trials, referrals | `entitlements`, `risk`, `notifications`, `audit` |
-| `gamification` | XP ledger, levels, streaks, badges, quests, leagues | Domain events from `learning` and `assessment` |
-| `classroom` | Classes, join codes, assignments, class analytics | `assessment`, `learning` |
-| `reporting` | Student and parent dashboards, weekly reports, predicted score | Read models, replica DB |
-| `certificates` | Issuing, signing, public verification | `learning` |
-| `notifications` | SMS, email, in-app; templates via i18n; quiet hours | `worker` |
-| `audit` | Append-only audit log | Everyone writes, `admin` reads |
-| `admin` | User management, moderation, refunds, risk reviews | Facades over the modules above |
+| Module          | Owns                                                                                                     | Talks to                                               |
+| --------------- | -------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| `identity`      | Users, roles, phone OTP, passwords, sessions, refresh tokens, 2FA, child PIN login                       | `risk`, `audit`, `notifications`                       |
+| `family`        | Parent–child links, parental consent records                                                             | `identity`, `audit`                                    |
+| `privacy`       | Data export, account deletion (grace period → hard delete)                                               | All modules through a `PersonalDataProvider` interface |
+| `risk`          | Device fingerprints, velocity rules, risk score, CAPTCHA escalation, manual review queue                 | `identity`, `billing`, `audit`                         |
+| `catalogue`     | Tracks, courses, chapters, topics, knowledge graph (read side, published only)                           | `content` (published versions)                         |
+| `content`       | Drafts, versions, review workflow, question templates, media assets (CMS write side)                     | `catalogue`, `media`, `audit`                          |
+| `media`         | Uploads, transcoding jobs, HLS keys, signed playback URLs                                                | `worker`, `entitlements`                               |
+| `assessment`    | Assessments, attempts, item generation, server-side grading, anti-cheat signals                          | `question-engine`, `learning`, `risk`                  |
+| `learning`      | Topic progress, mastery, spaced repetition, diagnostic → learning path, gap routing                      | `catalogue`, `assessment`                              |
+| `entitlements`  | "May this user access X?" (free tier, subscription, daily limits)                                        | `billing`, `catalogue`                                 |
+| `billing`       | Plans (from config), subscriptions, payments, refunds, provider adapters, promo codes, trials, referrals | `entitlements`, `risk`, `notifications`, `audit`       |
+| `gamification`  | XP ledger, levels, streaks, badges, quests, leagues                                                      | Domain events from `learning` and `assessment`         |
+| `classroom`     | Classes, join codes, assignments, class analytics                                                        | `assessment`, `learning`                               |
+| `reporting`     | Student and parent dashboards, weekly reports, predicted score                                           | Read models, replica DB                                |
+| `certificates`  | Issuing, signing, public verification                                                                    | `learning`                                             |
+| `notifications` | SMS, email, in-app; templates via i18n; quiet hours                                                      | `worker`                                               |
+| `audit`         | Append-only audit log                                                                                    | Everyone writes, `admin` reads                         |
+| `admin`         | User management, moderation, refunds, risk reviews                                                       | Facades over the modules above                         |
 
 **Module rules** (enforced with `eslint-plugin-boundaries`):
+
 1. A module may import another module only through its `index.ts` public API.
 2. No module reads another module's tables directly. Reporting is the only
    exception: it reads views on the replica.
@@ -234,15 +235,17 @@ interface, so a statistical model (BKT/IRT) can replace it later
 ([ADR-0006](adr/0006-rule-based-adaptivity.md)).
 
 ### 5.3 Diagnostic → learning path
+
 1. The diagnostic selects items by walking the knowledge graph from the course's
    "leaf" topics downward (binary-search style): a correct answer on a topic
-   marks its prerequisites as *probably mastered*, a wrong answer probes
+   marks its prerequisites as _probably mastered_, a wrong answer probes
    them.
 2. The result is a mastery estimate per topic.
 3. The learning path is a topological order of the course's topic graph,
    minus topics estimated as mastered, recomputed whenever mastery changes.
 
 ### 5.4 Sign-up and login
+
 - **Parent:** phone → SMS OTP (rate-limited, CAPTCHA escalates with risk) →
   set password (breached-password check) → add child (first name, nickname,
   grade, birth year) → consent screen → done.
@@ -308,14 +311,14 @@ loaded at boot by `packages/config`, validated with Zod, and exposed as typed
 objects. A bad config value stops the app at startup instead of failing at
 runtime.
 
-| File | Examples |
-|---|---|
-| `config/learning.yaml` | `masteryThreshold: 0.8`, SM-2 intervals, gap-routing limits, hint/solution policy |
-| `config/billing.yaml` | Plans, prices in tiyin, trial days, family max children, renewal retry schedule |
-| `config/gamification.yaml` | XP per event, level curve, streak rules, league sizes, quiet hours |
-| `config/limits.yaml` | Free daily exercises, concurrent sessions, devices per account, API rate limits |
-| `config/risk.yaml` | OTP limits per phone/IP/device, blocked prefixes, risk score weights and actions |
-| `config/content.yaml` | Supported locales, question types enabled, video length limits |
+| File                       | Examples                                                                          |
+| -------------------------- | --------------------------------------------------------------------------------- |
+| `config/learning.yaml`     | `masteryThreshold: 0.8`, SM-2 intervals, gap-routing limits, hint/solution policy |
+| `config/billing.yaml`      | Plans, prices in tiyin, trial days, family max children, renewal retry schedule   |
+| `config/gamification.yaml` | XP per event, level curve, streak rules, league sizes, quiet hours                |
+| `config/limits.yaml`       | Free daily exercises, concurrent sessions, devices per account, API rate limits   |
+| `config/risk.yaml`         | OTP limits per phone/IP/device, blocked prefixes, risk score weights and actions  |
+| `config/content.yaml`      | Supported locales, question types enabled, video length limits                    |
 
 **Environment variables** cover deployment settings and secrets only (database URL,
 Redis URL, provider keys). Each app ships a `.env.example`. In production,
@@ -332,13 +335,14 @@ admin UI later, with an audit trail, if they change often.
 ## 7. Cross-cutting concerns
 
 ### 7.1 Performance and slow networks
+
 - **Rendering:** student pages use React Server Components where they help.
   The lesson player is a client component that loads only the activity type
   needed for that step (dynamic import).
 - **Budgets enforced in CI:** ≤ 200 KB gzipped JS on the first lesson page;
   Lighthouse with the "Slow 3G" profile on key pages.
 - **PWA:** the app shell and the current topic's assets are precached.
-  **Offline practice:** the worker prefetches *practice items only* (without
+  **Offline practice:** the worker prefetches _practice items only_ (without
   answers). Responses are queued in IndexedDB and graded when the device is back
   online. Hints work offline, while solutions and XP arrive on sync. Mastery tests
   and mock exams require a connection, since answers are checked only on the server.
@@ -346,16 +350,18 @@ admin UI later, with an audit trail, if they change often.
   audio-only fallback for very slow links. Subtitles are WebVTT per locale.
 
 ### 7.2 Caching
-| What | Where | Invalidation |
-|---|---|---|
-| Static assets, HLS segments | CDN, immutable (content-hashed) | New hash = new URL |
-| Published topic content | Redis + HTTP `ETag` | The key includes the version ID, so it never needs invalidating |
-| Catalogue tree per locale | Redis, 10 min | Event `TopicPublished` purges it |
-| Entitlements per user | Redis, 60 s | Event `SubscriptionChanged` purges it |
-| Leaderboards | Redis sorted sets | Rebuilt from the XP ledger nightly |
-| Personal data | **Never** at the CDN | n/a |
+
+| What                        | Where                           | Invalidation                                                    |
+| --------------------------- | ------------------------------- | --------------------------------------------------------------- |
+| Static assets, HLS segments | CDN, immutable (content-hashed) | New hash = new URL                                              |
+| Published topic content     | Redis + HTTP `ETag`             | The key includes the version ID, so it never needs invalidating |
+| Catalogue tree per locale   | Redis, 10 min                   | Event `TopicPublished` purges it                                |
+| Entitlements per user       | Redis, 60 s                     | Event `SubscriptionChanged` purges it                           |
+| Leaderboards                | Redis sorted sets               | Rebuilt from the XP ledger nightly                              |
+| Personal data               | **Never** at the CDN            | n/a                                                             |
 
 ### 7.3 Video protection
+
 1. The worker transcodes uploads with ffmpeg into HLS, with each rendition
    encrypted with AES-128 using a per-video key.
 2. Keys are served only by `GET /media/{id}/key`, which checks the session and
@@ -367,16 +373,18 @@ admin UI later, with an audit trail, if they change often.
    API.
 
 ### 7.4 Internationalisation
+
 - UI strings: ICU message format catalogues in `packages/i18n`, with locales
   `uz-Latn`, `ru` and `en`. A CI check fails the build on a missing key.
 - Content: every translatable content field is a **localised object**
   (`{"uz-Latn": "...", "ru": "...", "en": "..."}`) inside the versioned content
-  document. The publish workflow requires all *enabled* content locales
+  document. The publish workflow requires all _enabled_ content locales
   (`config/content.yaml`).
 - Numbers and dates are formatted per locale (for example the decimal comma
   in uz and ru).
 
 ### 7.5 Scaling to 100k+ users
+
 - The API and worker are stateless, so both scale horizontally behind the proxy.
   Sessions are kept in Postgres and cached in Redis.
 - Postgres uses **PgBouncer** connection pooling. A **read replica** serves
@@ -389,6 +397,7 @@ admin UI later, with an audit trail, if they change often.
   because they go through the outbox.
 
 ### 7.6 Observability
+
 OpenTelemetry traces and metrics from the API and worker go to Prometheus/Grafana.
 Structured JSON logs go to Loki, with personal data redacted at the logger.
 Errors go to a self-hosted Sentry-compatible tracker (GlitchTip), so that error
@@ -396,6 +405,7 @@ payloads stay in the country. Every request carries a request ID, which is
 returned in error responses so support can trace a problem.
 
 ### 7.7 Security architecture (summary; details in Phase 4)
+
 - **Server-side RBAC on every request:** a global guard in NestJS reads
   `@Permissions(...)` on each handler. A test fails the build if any route
   lacks a declaration. Each module also checks **object-level** access
@@ -418,15 +428,15 @@ returned in error responses so support can trace a problem.
 
 ## 8. Extensibility: how the MVP grows
 
-| Future need | What changes | What does *not* change |
-|---|---|---|
-| New grade (1–4, 6–11) | Content in the CMS + knowledge-graph edges | Code |
-| New track (Cambridge, SAT, olympiad) | A `tracks` row, courses, mappings; mock-exam blueprint in config | Code (unless it needs a new question type) |
-| New question type (graphing) | One generator/grader in `question-engine` + one renderer in `question-render` + one editor in `studio` | Assessment flow, DB schema (the type is a discriminator in JSON) |
-| New payment provider (Uzum, Visa/Mastercard) | One adapter implementing `PaymentProvider` + config | Billing flows, subscriptions |
-| School licence | `organisations` + seat table, invoice adapter | Entitlements interface |
-| Native mobile apps | New clients using the same API with Bearer tokens | API |
-| BKT/IRT adaptivity | New `GapRouter` / `MasteryModel` implementation | Callers |
+| Future need                                  | What changes                                                                                           | What does _not_ change                                           |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------- |
+| New grade (1–4, 6–11)                        | Content in the CMS + knowledge-graph edges                                                             | Code                                                             |
+| New track (Cambridge, SAT, olympiad)         | A `tracks` row, courses, mappings; mock-exam blueprint in config                                       | Code (unless it needs a new question type)                       |
+| New question type (graphing)                 | One generator/grader in `question-engine` + one renderer in `question-render` + one editor in `studio` | Assessment flow, DB schema (the type is a discriminator in JSON) |
+| New payment provider (Uzum, Visa/Mastercard) | One adapter implementing `PaymentProvider` + config                                                    | Billing flows, subscriptions                                     |
+| School licence                               | `organisations` + seat table, invoice adapter                                                          | Entitlements interface                                           |
+| Native mobile apps                           | New clients using the same API with Bearer tokens                                                      | API                                                              |
+| BKT/IRT adaptivity                           | New `GapRouter` / `MasteryModel` implementation                                                        | Callers                                                          |
 
 The step-by-step guide "how to add a grade, topic, question type or payment
 provider" is written in Phase 6, once the code exists.
@@ -435,14 +445,14 @@ provider" is written in Phase 6, once the code exists.
 
 ## 9. Decisions in this phase
 
-| ADR | Decision | Main alternative |
-|---|---|---|
-| [0001](adr/0001-typescript-monorepo.md) | TypeScript monorepo (pnpm + Turborepo) | Python backend + separate JS front-end |
-| [0002](adr/0002-modular-monolith.md) | Modular monolith + worker | Microservices |
-| [0003](adr/0003-contract-first-openapi.md) | Contract-first OpenAPI 3.1 | Code-first (Swagger decorators) |
-| [0004](adr/0004-postgresql-kysely.md) | PostgreSQL + Kysely + up/down migrations; UUIDv7 | Prisma ORM |
-| [0005](adr/0005-auth-sessions-and-tokens.md) | Own auth module; short JWT + rotating opaque refresh in HttpOnly cookies | Keycloak |
-| [0006](adr/0006-rule-based-adaptivity.md) | Rule-based gap routing + SM-2 behind interfaces | BKT/IRT from day one |
-| [0007](adr/0007-outbox-domain-events.md) | Transactional outbox + BullMQ | RabbitMQ/Kafka |
-| [0008](adr/0008-payment-provider-adapters.md) | Provider adapter interface; tiyin integers; three-level idempotency | Payment aggregator only |
-| [0009](adr/0009-nextjs-two-frontends.md) | Next.js, separate `web` and `studio` apps | Single SPA (Vite) |
+| ADR                                           | Decision                                                                 | Main alternative                       |
+| --------------------------------------------- | ------------------------------------------------------------------------ | -------------------------------------- |
+| [0001](adr/0001-typescript-monorepo.md)       | TypeScript monorepo (pnpm + Turborepo)                                   | Python backend + separate JS front-end |
+| [0002](adr/0002-modular-monolith.md)          | Modular monolith + worker                                                | Microservices                          |
+| [0003](adr/0003-contract-first-openapi.md)    | Contract-first OpenAPI 3.1                                               | Code-first (Swagger decorators)        |
+| [0004](adr/0004-postgresql-kysely.md)         | PostgreSQL + Kysely + up/down migrations; UUIDv7                         | Prisma ORM                             |
+| [0005](adr/0005-auth-sessions-and-tokens.md)  | Own auth module; short JWT + rotating opaque refresh in HttpOnly cookies | Keycloak                               |
+| [0006](adr/0006-rule-based-adaptivity.md)     | Rule-based gap routing + SM-2 behind interfaces                          | BKT/IRT from day one                   |
+| [0007](adr/0007-outbox-domain-events.md)      | Transactional outbox + BullMQ                                            | RabbitMQ/Kafka                         |
+| [0008](adr/0008-payment-provider-adapters.md) | Provider adapter interface; tiyin integers; three-level idempotency      | Payment aggregator only                |
+| [0009](adr/0009-nextjs-two-frontends.md)      | Next.js, separate `web` and `studio` apps                                | Single SPA (Vite)                      |

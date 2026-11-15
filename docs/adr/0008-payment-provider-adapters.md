@@ -4,12 +4,14 @@
 - Date: 2026-11-15
 
 ## Context
+
 The MVP launches with Payme and Click. Uzum Bank, direct Uzcard/Humo and
 Visa/Mastercard come later. Each provider has its own callback protocol and
 authentication. Payments must never be duplicated or lost, and card data must
 never touch our servers.
 
 ## Decision
+
 - A `PaymentProvider` interface: `createCheckout`, `handleCallback`,
   `chargeSavedToken`, `refund`, `getStatus`. One adapter per provider, selected by
   config.
@@ -25,12 +27,14 @@ never touch our servers.
   card fingerprint (used for the one-trial-per-card rule).
 
 ## Alternatives considered
+
 - **Single aggregator for everything.** Fewer integrations, but higher fees, less
   control over recurring payments, and dependence on one vendor.
 - **Floats or decimal UZS.** Rounding bugs; providers such as Payme already work
   in tiyin.
 
 ## Consequences
+
 - Adding a provider means one adapter, its tests and one config entry (documented
   in the "how to add a payment provider" guide).
 - A daily reconciliation job compares our payments with the provider's statement

@@ -4,11 +4,13 @@
 - Date: 2026-11-15
 
 ## Context
+
 The data is relational (users, enrolments, payments) with some document-shaped
 parts (versioned lesson content, question templates). The brief requires
 versioned migrations with rollback.
 
 ## Decision
+
 - **PostgreSQL 16+** as the single source of truth. JSONB for versioned content
   documents and question templates.
 - **Kysely** (a type-safe SQL query builder) for queries, and its migrator for
@@ -19,6 +21,7 @@ versioned migrations with rollback.
 - Monthly partitions for large append-only tables.
 
 ## Alternatives considered
+
 - **Prisma.** Excellent developer experience, but its migrations have no
   built-in down/rollback, it hides SQL, and it is weaker on partitioning and
   advanced Postgres features.
@@ -30,6 +33,7 @@ versioned migrations with rollback.
   they leak business volume.
 
 ## Consequences
+
 - Queries read like SQL, which is easy to reason about and tune.
 - Every migration must ship a working `down`. CI runs up → down → up on an empty
   database.

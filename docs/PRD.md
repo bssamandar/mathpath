@@ -1,11 +1,11 @@
 # MathPath: Product Requirements Document (PRD)
 
-| | |
-|---|---|
-| Status | Draft for approval (Phase 2) |
-| Version | 0.1.0 |
-| Date | 2026-11-15 |
-| Owner | Samandar |
+|          |                                                         |
+| -------- | ------------------------------------------------------- |
+| Status   | Draft for approval (Phase 2)                            |
+| Version  | 0.1.0                                                   |
+| Date     | 2026-11-15                                              |
+| Owner    | Samandar                                                |
 | Codename | MathPath (set in config; renaming is a one-line change) |
 
 ---
@@ -47,15 +47,15 @@ connection.
 
 ## 3. Goals and success metrics
 
-| Goal | Metric (first 6 months after MVP launch) | Target |
-|---|---|---|
-| Students learn | Topic mastery-test pass rate on the first or second attempt | ≥ 60% |
-| Students learn | Score gain from entry diagnostic to end-of-chapter test | +20 percentage points |
-| Students come back | Week-4 retention of activated students | ≥ 30% |
-| It works on slow networks | First lesson screen interactive on a 3G profile (1.6 Mbps, 300 ms RTT) | < 4 s |
-| The business works | Free to paid conversion | ≥ 3% |
-| Platform is trusted | Security incidents involving personal data | 0 |
-| Platform is fair | Accounts flagged as fake and confirmed by review | Tracked; < 2% of sign-ups |
+| Goal                      | Metric (first 6 months after MVP launch)                               | Target                    |
+| ------------------------- | ---------------------------------------------------------------------- | ------------------------- |
+| Students learn            | Topic mastery-test pass rate on the first or second attempt            | ≥ 60%                     |
+| Students learn            | Score gain from entry diagnostic to end-of-chapter test                | +20 percentage points     |
+| Students come back        | Week-4 retention of activated students                                 | ≥ 30%                     |
+| It works on slow networks | First lesson screen interactive on a 3G profile (1.6 Mbps, 300 ms RTT) | < 4 s                     |
+| The business works        | Free to paid conversion                                                | ≥ 3%                      |
+| Platform is trusted       | Security incidents involving personal data                             | 0                         |
+| Platform is fair          | Accounts flagged as fake and confirmed by review                       | Tracked; < 2% of sign-ups |
 
 Non-goals for the MVP: native mobile apps, live tutoring and video calls,
 a public content marketplace, or AI chat tutoring.
@@ -64,13 +64,13 @@ a public content marketplace, or AI chat tutoring.
 
 ## 4. Users and roles
 
-| Role | Primary needs | In MVP? |
-|---|---|---|
-| **Student** (age 6–18; MVP mostly 10–12) | Lessons, practice, tests, achievements; a simple, encouraging UI | Yes |
-| **Parent** | Child's progress, weekly report, consent, payment management | Yes |
-| **Content author / methodologist** | Create lessons and questions without code; review and approval workflow | Yes |
-| **Administrator** | Users, payments, moderation, security, audit | Yes |
-| **Teacher / tutor** | Classes, assignments, class analytics | Yes, but delivered last (Phase 6, dashboards step) |
+| Role                                     | Primary needs                                                           | In MVP?                                            |
+| ---------------------------------------- | ----------------------------------------------------------------------- | -------------------------------------------------- |
+| **Student** (age 6–18; MVP mostly 10–12) | Lessons, practice, tests, achievements; a simple, encouraging UI        | Yes                                                |
+| **Parent**                               | Child's progress, weekly report, consent, payment management            | Yes                                                |
+| **Content author / methodologist**       | Create lessons and questions without code; review and approval workflow | Yes                                                |
+| **Administrator**                        | Users, payments, moderation, security, audit                            | Yes                                                |
+| **Teacher / tutor**                      | Classes, assignments, class analytics                                   | Yes, but delivered last (Phase 6, dashboards step) |
 
 **Account model.** A child under 16 cannot hold an account without a linked parent
 account that has given verified consent (see §9). One parent account can manage
@@ -110,16 +110,16 @@ Track → Course (grade or programme) → Chapter → Topic → Lesson steps
 
 ### 5.1 Question types
 
-| Type | MVP | Notes |
-|---|---|---|
-| Single choice | ✅ | |
-| Multiple choice | ✅ | Partial credit is configurable |
-| Numeric input | ✅ | Tolerance and accepted forms (for example 0.5 = 1/2) |
-| Formula input (math keyboard) | ✅ | Checked by symbolic equivalence, not string match |
-| Matching | ✅ | |
-| Ordering | ✅ | |
-| Graphing | Later | The number line is in the MVP as an interactive activity |
-| Open response | Later | Needs teacher marking; comes with the teacher role |
+| Type                          | MVP   | Notes                                                    |
+| ----------------------------- | ----- | -------------------------------------------------------- |
+| Single choice                 | ✅    |                                                          |
+| Multiple choice               | ✅    | Partial credit is configurable                           |
+| Numeric input                 | ✅    | Tolerance and accepted forms (for example 0.5 = 1/2)     |
+| Formula input (math keyboard) | ✅    | Checked by symbolic equivalence, not string match        |
+| Matching                      | ✅    |                                                          |
+| Ordering                      | ✅    |                                                          |
+| Graphing                      | Later | The number line is in the MVP as an interactive activity |
+| Open response                 | Later | Needs teacher marking; comes with the teacher role       |
 
 **Parameterised questions.** Every question is a template with variables,
 constraints and an answer formula. For example:
@@ -142,22 +142,25 @@ matter more from grade 7 onward.
 ## 6. Assessment and adaptivity
 
 ### 6.1 Entry diagnostic
+
 - Free, 15–25 minutes, adaptive (each answer chooses the next question).
 - Covers the MVP course plus the grade 3–4 prerequisites of its topics.
 - Output: a mastery estimate per topic and a **personal learning path**, which
   is an ordered list of topics, skipping those already mastered.
 
 ### 6.2 Mastery model
-- Each (student, topic) pair has a mastery state: *not started → learning →
-  mastered → needs review*.
+
+- Each (student, topic) pair has a mastery state: _not started → learning →
+  mastered → needs review_.
 - A topic is **mastered** when the student scores ≥ 80% on its mastery test.
 - The spaced-repetition review uses SM-2-style intervals (1, 3, 7, 16, 35 days,
-  configurable). A failed review moves the topic back to *needs review*.
+  configurable). A failed review moves the topic back to _needs review_.
 - Why SM-2: it is simple, well understood and easy for you to maintain. The
   alternative is FSRS, which is more accurate but harder to explain and tune.
   It can replace SM-2 later behind the same interface.
 
 ### 6.3 Gap routing (adaptive algorithm)
+
 - When a student fails a mastery test, or makes repeated errors in practice, the
   engine checks the prerequisites of that topic in the knowledge graph.
 - If a prerequisite is not mastered, or its mastery is out of date, the student
@@ -171,21 +174,24 @@ matter more from grade 7 onward.
   data. The engine is designed so that it can be swapped later.
 
 ### 6.4 Tests
-| Test | MVP |
-|---|---|
-| Topic mastery test | ✅ |
-| Chapter test | ✅ |
-| Term and annual tests | Later (same engine, more content) |
-| Timed mock exam, entrance format | ✅ |
-| Timed mock exam, SAT/GMAT/GRE format | Later (with those tracks) |
+
+| Test                                 | MVP                               |
+| ------------------------------------ | --------------------------------- |
+| Topic mastery test                   | ✅                                |
+| Chapter test                         | ✅                                |
+| Term and annual tests                | Later (same engine, more content) |
+| Timed mock exam, entrance format     | ✅                                |
+| Timed mock exam, SAT/GMAT/GRE format | Later (with those tracks)         |
 
 ### 6.5 Analytics
+
 Student and parent views: mastery by topic (a heat map over the chapter tree),
 time spent, weak areas, a streak and activity calendar, and a **predicted
 entrance-exam score**. In the MVP, the prediction is a simple weighted mastery
-estimate and is labelled *estimate*.
+estimate and is labelled _estimate_.
 
 ### 6.6 Certificates
+
 When a student completes a course, a PDF certificate is issued with a
 **QR code linking to a public verification page**. The page shows the
 certificate ID, course, date and the student's first name and last initial
@@ -197,19 +203,21 @@ server-side so it cannot be forged.
 ## 7. Monetisation
 
 ### 7.1 Free tier
+
 - The first topic of every chapter, the entry diagnostic, and a daily limit of
   practice exercises (default 20, configurable).
 
 ### 7.2 Paid plans (all prices are in config, not code)
-| Plan | MVP |
-|---|---|
-| Monthly / annual individual | ✅ |
-| Family (one parent, up to N children) | ✅ |
+
+| Plan                                    | MVP                                     |
+| --------------------------------------- | --------------------------------------- |
+| Monthly / annual individual             | ✅                                      |
+| Family (one parent, up to N children)   | ✅                                      |
 | School licence (seats, invoice billing) | Later (needs the teacher role at scale) |
 
 - Free trial (default 7 days), **one per device and one per payment card**.
 - Promo codes ✅. Referral programme: a bonus only after the referred account
-  is verified *and* active for 7 days. The referral programme ships at the end
+  is verified _and_ active for 7 days. The referral programme ships at the end
   of the MVP.
 - Payments: **Payme and Click in the MVP**, behind one `PaymentProvider`
   interface. Uzum Bank, direct Uzcard/Humo, and Visa/Mastercard for
@@ -224,17 +232,18 @@ server-side so it cannot be forged.
 
 ## 8. Gamification
 
-| Mechanic | MVP |
-|---|---|
-| XP and levels | ✅ |
-| Daily streak (with a "streak freeze") | ✅ |
-| Badges | ✅ |
-| Daily quests | ✅ |
-| Weekly leagues and leaderboards | ✅ (end of MVP) |
-| Avatars and virtual coins | Later |
-| Class vs class competitions | Later (with teacher classes) |
+| Mechanic                              | MVP                          |
+| ------------------------------------- | ---------------------------- |
+| XP and levels                         | ✅                           |
+| Daily streak (with a "streak freeze") | ✅                           |
+| Badges                                | ✅                           |
+| Daily quests                          | ✅                           |
+| Weekly leagues and leaderboards       | ✅ (end of MVP)              |
+| Avatars and virtual coins             | Later                        |
+| Class vs class competitions           | Later (with teacher classes) |
 
 Rules, enforced in code:
+
 - **XP is earned only for real learning.** XP comes from a correct first-attempt
   answer, a passed mastery test or a passed review. There is no XP for watching a
   video or retrying an answer you already saw.
@@ -254,6 +263,7 @@ The details come in Phase 4 (STRIDE threat model). These are the requirements th
 MVP must meet:
 
 **Authentication and access**
+
 - Sign-up with phone + SMS OTP (one account per phone number). Parents and staff
   also set a password. Children can sign in through their parent's
   device or a parent-issued PIN.
@@ -264,6 +274,7 @@ MVP must meet:
 - RBAC is enforced server-side on every request; there is no client-side trust.
 
 **Children's data and legal compliance**
+
 - Compliance with the Law of the Republic of Uzbekistan "On Personal Data"
   (No. ZRU-547), including its requirement to **store citizens' personal data on
   servers located in Uzbekistan**. This must be confirmed by a local lawyer
@@ -276,6 +287,7 @@ MVP must meet:
   and then a hard delete; anonymised analytics are kept.
 
 **Abuse protection (MVP)**
+
 - OTP limits per phone, IP and device; blocking of suspicious prefixes;
   alerts on SMS spend.
 - Invisible CAPTCHA that escalates with risk; disposable-email blocking;
@@ -288,6 +300,7 @@ MVP must meet:
   detection of abnormally fast or identical answer patterns.
 
 **Platform security**
+
 - OWASP Top 10 and ASVS Level 2 as the target. TLS 1.3, encryption at rest,
   a secret manager, CSP and secure headers, rate limiting, audit log, backups,
   and SAST, dependency scanning and DAST in CI. Penetration test before public
@@ -299,17 +312,17 @@ MVP must meet:
 
 ## 10. Non-functional requirements
 
-| Area | Requirement |
-|---|---|
-| Performance | Lesson page JS ≤ 200 KB gzipped on first load; API p95 < 300 ms for read endpoints |
-| Slow networks | Works on 3G; videos have adaptive bitrate down to 240p; the practice set can be completed offline and synced later (PWA) |
-| Scale | 100k registered users, ~5k concurrent at peak; stateless API scaled horizontally; Redis caching; background queue |
-| Availability | 99.5% monthly in the MVP |
-| Localisation | Uzbek (Latin), Russian, English. Every UI string goes through i18n. MVP content is in Uzbek and Russian |
-| Accessibility | WCAG 2.1 AA; large touch targets and audio prompts for young children |
-| Quality | Unit, integration and e2e tests; ≥ 80% coverage of backend business logic; e2e for key flows |
-| Maintainability | Business rules in config; versioned migrations with rollback; linter and formatter; docstrings; ADRs |
-| Hosting | Docker-based and provider-agnostic; production in an Uzbek data centre |
+| Area            | Requirement                                                                                                              |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Performance     | Lesson page JS ≤ 200 KB gzipped on first load; API p95 < 300 ms for read endpoints                                       |
+| Slow networks   | Works on 3G; videos have adaptive bitrate down to 240p; the practice set can be completed offline and synced later (PWA) |
+| Scale           | 100k registered users, ~5k concurrent at peak; stateless API scaled horizontally; Redis caching; background queue        |
+| Availability    | 99.5% monthly in the MVP                                                                                                 |
+| Localisation    | Uzbek (Latin), Russian, English. Every UI string goes through i18n. MVP content is in Uzbek and Russian                  |
+| Accessibility   | WCAG 2.1 AA; large touch targets and audio prompts for young children                                                    |
+| Quality         | Unit, integration and e2e tests; ≥ 80% coverage of backend business logic; e2e for key flows                             |
+| Maintainability | Business rules in config; versioned migrations with rollback; linter and formatter; docstrings; ADRs                     |
+| Hosting         | Docker-based and provider-agnostic; production in an Uzbek data centre                                                   |
 
 ---
 
@@ -331,6 +344,7 @@ edition in use. The provisional chapter list is:
 8. Data: tables and simple charts
 
 **Track 4: Entrance preparation, Presidential and specialised schools.**
+
 - A course of topic blocks: arithmetic and number sense, word problems,
   logic and mathematical reasoning (patterns, sequences, sets, simple
   combinatorics, "true/false" logic puzzles), and spatial reasoning.
@@ -347,20 +361,21 @@ textbook text, to avoid copyright problems.
 
 ### 11.2 In scope / out of scope
 
-| In MVP | After MVP |
-|---|---|
-| Student, parent, author, admin, teacher (basic classes and assignments) | School licence, class vs class competitions |
-| Grade 5 + entrance-prep track | Grades 1–4, 6–11; Cambridge, SAT, GMAT, GRE; olympiad |
-| Uzbek and Russian content; trilingual UI | English content |
-| Six question types, four activity types | Graphing, open response, geometric construction |
-| Diagnostic, mastery tests, chapter tests, entrance mock exams | Term/annual tests, SAT/GMAT/GRE mocks |
-| Payme, Click | Uzum Bank, direct Uzcard/Humo, Visa/Mastercard |
-| XP, levels, streaks, badges, quests, leagues | Avatars, coins, class competitions |
-| Encrypted HLS, watermark | Widevine/FairPlay DRM |
-| PWA | Android and iOS apps |
-| Rule-based adaptivity, SM-2 | BKT/IRT, FSRS |
+| In MVP                                                                  | After MVP                                             |
+| ----------------------------------------------------------------------- | ----------------------------------------------------- |
+| Student, parent, author, admin, teacher (basic classes and assignments) | School licence, class vs class competitions           |
+| Grade 5 + entrance-prep track                                           | Grades 1–4, 6–11; Cambridge, SAT, GMAT, GRE; olympiad |
+| Uzbek and Russian content; trilingual UI                                | English content                                       |
+| Six question types, four activity types                                 | Graphing, open response, geometric construction       |
+| Diagnostic, mastery tests, chapter tests, entrance mock exams           | Term/annual tests, SAT/GMAT/GRE mocks                 |
+| Payme, Click                                                            | Uzum Bank, direct Uzcard/Humo, Visa/Mastercard        |
+| XP, levels, streaks, badges, quests, leagues                            | Avatars, coins, class competitions                    |
+| Encrypted HLS, watermark                                                | Widevine/FairPlay DRM                                 |
+| PWA                                                                     | Android and iOS apps                                  |
+| Rule-based adaptivity, SM-2                                             | BKT/IRT, FSRS                                         |
 
 ### 11.3 Build order (Phase 6)
+
 1. Repository, CI and documentation skeleton
 2. Authentication and fake-account protection
 3. Content (CMS + review workflow) and lesson player
@@ -374,6 +389,7 @@ textbook text, to avoid copyright problems.
 ## 12. User stories (MVP acceptance level)
 
 **Student**
+
 - S1. As a student, I take a diagnostic test and get a learning path that skips
   what I already know.
 - S2. As a student, I complete a lesson (video → activity → practice → mastery test)
@@ -388,6 +404,7 @@ textbook text, to avoid copyright problems.
   position under my nickname.
 
 **Parent**
+
 - P1. As a parent, I create my account with phone + OTP, add my child and give
   consent.
 - P2. As a parent, I see my child's progress and receive a weekly report.
@@ -396,16 +413,19 @@ textbook text, to avoid copyright problems.
 - P4. As a parent, I export or delete my child's data.
 
 **Author / methodologist**
+
 - A1. As an author, I create a topic with lesson steps and parameterised questions
   using a visual editor with live LaTeX preview.
 - A2. As an author, I submit content for review. A reviewer approves it or returns
   it with comments, and only approved versions are published.
 
 **Teacher**
+
 - T1. As a teacher, I create a class, invite students with a code, assign topics
   or tests with a due date, and see class results.
 
 **Admin**
+
 - AD1. As an admin, I search users, view the audit log, review accounts the risk
   engine flagged, issue refunds and manage promo codes.
 
@@ -413,32 +433,32 @@ textbook text, to avoid copyright problems.
 
 ## 13. Assumptions, risks and open items
 
-| # | Item | Type | Mitigation / owner |
-|---|---|---|---|
-| 1 | The Personal Data law and localisation rules apply as described | Legal risk | Lawyer review before launch |
-| 2 | The entrance exam format changes each year | Content risk | The format is in config; a methodologist checks it each season |
-| 3 | Payme and Click merchant accounts need a legal entity | Business dependency | Samandar to start onboarding early; sandbox keys are enough for development |
-| 4 | Content production (videos, questions) is the slowest part | Delivery risk | CMS first; demo topics seeded; content team runs in parallel with development |
-| 5 | Grade 5 chapter list matches the current textbook | Assumption | Methodologist check |
-| 6 | Uzbek data-centre hosting supports managed Postgres and object storage | Infrastructure risk | Docker + S3-compatible storage keeps us provider-agnostic |
-| 7 | SMS pumping costs | Financial risk | Limits and spend alerts from day one |
+| #   | Item                                                                   | Type                | Mitigation / owner                                                            |
+| --- | ---------------------------------------------------------------------- | ------------------- | ----------------------------------------------------------------------------- |
+| 1   | The Personal Data law and localisation rules apply as described        | Legal risk          | Lawyer review before launch                                                   |
+| 2   | The entrance exam format changes each year                             | Content risk        | The format is in config; a methodologist checks it each season                |
+| 3   | Payme and Click merchant accounts need a legal entity                  | Business dependency | Samandar to start onboarding early; sandbox keys are enough for development   |
+| 4   | Content production (videos, questions) is the slowest part             | Delivery risk       | CMS first; demo topics seeded; content team runs in parallel with development |
+| 5   | Grade 5 chapter list matches the current textbook                      | Assumption          | Methodologist check                                                           |
+| 6   | Uzbek data-centre hosting supports managed Postgres and object storage | Infrastructure risk | Docker + S3-compatible storage keeps us provider-agnostic                     |
+| 7   | SMS pumping costs                                                      | Financial risk      | Limits and spend alerts from day one                                          |
 
 ---
 
 ## 14. Decision log (Phase 1 and 2)
 
-| Decision | Chosen | Alternative | Why |
-|---|---|---|---|
-| MVP prep track | Presidential/specialised entrance prep | Cambridge Lower Secondary | Same age group as grade 5, strong local demand, exercises the logic question types |
-| Content languages at launch | Uzbek + Russian (UI in all three) | All three at once | Halves the content effort while keeping English ready in i18n |
-| Stack | TypeScript monorepo: Next.js PWA, NestJS, PostgreSQL, Redis, BullMQ, S3-compatible storage | Python (Django/FastAPI) backend | One language for client and server; shared types for the API; large hiring pool. Full justification in an ADR in Phase 3 |
-| Payments at launch | Payme + Click | All local providers at once | Covers most local card payments; the provider interface makes adding others mechanical |
-| SMS | Eskiz.uz behind an interface | Playmobile and other local gateways | Popular local gateway with a simple API; swappable |
-| Video protection | Encrypted HLS + signed URLs + watermark | Full DRM | DRM licences cost money and add complexity; this level stops casual piracy |
-| Adaptivity | Rule-based prerequisite routing + SM-2 | BKT/IRT, FSRS | Transparent and maintainable with no training data; can be swapped later |
-| Formula rendering | KaTeX | MathJax | Much faster on low-end phones |
-| Child accounts | Linked to a consenting parent; no child phone or email | Independent child accounts | Data minimisation and parental consent requirements |
-| Design docs | Markdown, moving into the repo's `docs/` | Google Docs / Claude Docs | Versioned together with the code |
+| Decision                    | Chosen                                                                                     | Alternative                         | Why                                                                                                                      |
+| --------------------------- | ------------------------------------------------------------------------------------------ | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| MVP prep track              | Presidential/specialised entrance prep                                                     | Cambridge Lower Secondary           | Same age group as grade 5, strong local demand, exercises the logic question types                                       |
+| Content languages at launch | Uzbek + Russian (UI in all three)                                                          | All three at once                   | Halves the content effort while keeping English ready in i18n                                                            |
+| Stack                       | TypeScript monorepo: Next.js PWA, NestJS, PostgreSQL, Redis, BullMQ, S3-compatible storage | Python (Django/FastAPI) backend     | One language for client and server; shared types for the API; large hiring pool. Full justification in an ADR in Phase 3 |
+| Payments at launch          | Payme + Click                                                                              | All local providers at once         | Covers most local card payments; the provider interface makes adding others mechanical                                   |
+| SMS                         | Eskiz.uz behind an interface                                                               | Playmobile and other local gateways | Popular local gateway with a simple API; swappable                                                                       |
+| Video protection            | Encrypted HLS + signed URLs + watermark                                                    | Full DRM                            | DRM licences cost money and add complexity; this level stops casual piracy                                               |
+| Adaptivity                  | Rule-based prerequisite routing + SM-2                                                     | BKT/IRT, FSRS                       | Transparent and maintainable with no training data; can be swapped later                                                 |
+| Formula rendering           | KaTeX                                                                                      | MathJax                             | Much faster on low-end phones                                                                                            |
+| Child accounts              | Linked to a consenting parent; no child phone or email                                     | Independent child accounts          | Data minimisation and parental consent requirements                                                                      |
+| Design docs                 | Markdown, moving into the repo's `docs/`                                                   | Google Docs / Claude Docs           | Versioned together with the code                                                                                         |
 
 ---
 

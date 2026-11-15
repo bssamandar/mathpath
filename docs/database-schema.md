@@ -1,11 +1,11 @@
 # MathPath: Database Schema
 
-| | |
-|---|---|
-| Status | Draft for approval (Phase 3) |
-| Version | 0.1.0 |
-| Date | 2026-11-15 |
-| Engine | PostgreSQL 16+ ([ADR-0004](adr/0004-postgresql-kysely.md)) |
+|         |                                                            |
+| ------- | ---------------------------------------------------------- |
+| Status  | Draft for approval (Phase 3)                               |
+| Version | 0.1.0                                                      |
+| Date    | 2026-11-15                                                 |
+| Engine  | PostgreSQL 16+ ([ADR-0004](adr/0004-postgresql-kysely.md)) |
 
 This is the logical schema for the MVP. In Phase 6 it becomes Kysely migrations
 in `packages/db/migrations`, each with an `up` and a `down`.
@@ -14,23 +14,23 @@ in `packages/db/migrations`, each with an `up` and a `down`.
 
 ## 1. Conventions
 
-| Rule | Why |
-|---|---|
-| Table names are `snake_case` plural; columns are `snake_case` | Postgres convention; no quoting needed |
-| Primary key `id uuid` (UUIDv7, generated in the app) unless stated | Not enumerable; time-ordered for index locality |
-| `created_at`, `updated_at timestamptz NOT NULL DEFAULT now()` on mutable tables | Debugging and auditing |
-| Money: `bigint` in **tiyin** + `currency char(3)` | No float rounding |
-| Translatable text: `jsonb` "localised object" `{"uz-Latn": "...", "ru": "...", "en": "..."}` | Content locales vary per item; a translation table per entity would triple the joins |
-| Enums: `text` + `CHECK` constraint (not Postgres `ENUM`) | Adding a value is a simple migration; Postgres enums cannot drop values |
-| Soft delete only where legally needed (`users.deleted_at` during the grace period); otherwise hard delete | Data minimisation |
-| Phone numbers in E.164 (`+998XXXXXXXXX`) | One canonical form, so "one account per number" holds |
-| Secrets (TOTP seeds, provider tokens) encrypted at the application level (AES-256-GCM, key from the secret manager) in `bytea` columns | A database dump alone leaks nothing usable |
-| Tokens, OTPs, PINs: stored only as hashes | Same reason |
-| Large append-only tables are partitioned **by month** on `created_at` | Fast retention drops, smaller indexes |
-| Each module owns its tables; there are no cross-module foreign keys to tables of modules that may be extracted later (billing, media). The relationship is kept as a plain `uuid` column | Lets a module become a service later ([ADR-0002](adr/0002-modular-monolith.md)) |
+| Rule                                                                                                                                                                                     | Why                                                                                  |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| Table names are `snake_case` plural; columns are `snake_case`                                                                                                                            | Postgres convention; no quoting needed                                               |
+| Primary key `id uuid` (UUIDv7, generated in the app) unless stated                                                                                                                       | Not enumerable; time-ordered for index locality                                      |
+| `created_at`, `updated_at timestamptz NOT NULL DEFAULT now()` on mutable tables                                                                                                          | Debugging and auditing                                                               |
+| Money: `bigint` in **tiyin** + `currency char(3)`                                                                                                                                        | No float rounding                                                                    |
+| Translatable text: `jsonb` "localised object" `{"uz-Latn": "...", "ru": "...", "en": "..."}`                                                                                             | Content locales vary per item; a translation table per entity would triple the joins |
+| Enums: `text` + `CHECK` constraint (not Postgres `ENUM`)                                                                                                                                 | Adding a value is a simple migration; Postgres enums cannot drop values              |
+| Soft delete only where legally needed (`users.deleted_at` during the grace period); otherwise hard delete                                                                                | Data minimisation                                                                    |
+| Phone numbers in E.164 (`+998XXXXXXXXX`)                                                                                                                                                 | One canonical form, so "one account per number" holds                                |
+| Secrets (TOTP seeds, provider tokens) encrypted at the application level (AES-256-GCM, key from the secret manager) in `bytea` columns                                                   | A database dump alone leaks nothing usable                                           |
+| Tokens, OTPs, PINs: stored only as hashes                                                                                                                                                | Same reason                                                                          |
+| Large append-only tables are partitioned **by month** on `created_at`                                                                                                                    | Fast retention drops, smaller indexes                                                |
+| Each module owns its tables; there are no cross-module foreign keys to tables of modules that may be extracted later (billing, media). The relationship is kept as a plain `uuid` column | Lets a module become a service later ([ADR-0002](adr/0002-modular-monolith.md))      |
 
 Legend for the tables below: **PK** primary key, **FK** foreign key,
-**UQ** unique, **IX** index, *(enc)* encrypted at the application level.
+**UQ** unique, **IX** index, _(enc)_ encrypted at the application level.
 
 ---
 
@@ -124,9 +124,9 @@ change only together with the code that checks them.
 | Column | Type | Notes |
 |---|---|---|
 | id | uuid PK | |
-| user_id | uuid FK → users | IX |
+| user*id | uuid FK → users | IX |
 | type | text | CHECK in (`totp`) (WebAuthn later) |
-| secret | bytea *(enc)* | |
+| secret | bytea *(enc)\_ | |
 | confirmed_at | timestamptz NULL | |
 | last_used_step | bigint NULL | Prevents the same TOTP code from being used twice |
 
@@ -498,9 +498,9 @@ children covered.
 | Column | Type | Notes |
 |---|---|---|
 | id | uuid PK | |
-| owner_id | uuid | |
+| owner*id | uuid | |
 | provider | text | `payme`, `click` (later `uzum`, `uzcard`, `humo`, `stripe`...) |
-| provider_token | bytea *(enc)* | **Only** the provider's token |
+| provider_token | bytea *(enc)\_ | **Only** the provider's token |
 | card_mask | text | For example `8600 **** **** 1234` |
 | card_expiry | text | `MM/YY` |
 | card_fingerprint | text NULL | Provider-issued or HMAC of the token-bound ID; IX; one trial per card |
@@ -618,10 +618,16 @@ These shapes are validated with Zod schemas in `packages/question-engine` and
 `packages/contracts`.
 
 ### 4.1 `topic_versions.steps`
+
 ```json
 [
   { "type": "video", "mediaId": "0193...", "durationS": 412, "required": true },
-  { "type": "activity", "activity": "number_line", "config": { "min": 0, "max": 1, "ticks": 8 }, "prompt": { "uz-Latn": "...", "ru": "..." } },
+  {
+    "type": "activity",
+    "activity": "number_line",
+    "config": { "min": 0, "max": 1, "ticks": 8 },
+    "prompt": { "uz-Latn": "...", "ru": "..." }
+  },
   { "type": "practice", "pool": "practice", "minCorrect": 6 },
   { "type": "mastery_test", "assessmentId": "0193..." },
   { "type": "review", "pool": "review" }
@@ -629,6 +635,7 @@ These shapes are validated with Zod schemas in `packages/question-engine` and
 ```
 
 ### 4.2 `question_template_versions.body` (example: fraction addition)
+
 ```json
 {
   "variables": {
@@ -637,8 +644,16 @@ These shapes are validated with Zod schemas in `packages/question-engine` and
     "b": { "int": [1, "d-1"] }
   },
   "constraints": ["a + b != d"],
-  "stem": { "uz-Latn": "Hisoblang: $\\frac{{a}}{{d}} + \\frac{{b}}{{d}}$", "ru": "Вычислите: $\\frac{{a}}{{d}} + \\frac{{b}}{{d}}$" },
-  "answer": { "kind": "fraction", "expr": "(a+b)/d", "accept": ["equivalent", "mixed_number"], "requireSimplified": false },
+  "stem": {
+    "uz-Latn": "Hisoblang: $\\frac{{a}}{{d}} + \\frac{{b}}{{d}}$",
+    "ru": "Вычислите: $\\frac{{a}}{{d}} + \\frac{{b}}{{d}}$"
+  },
+  "answer": {
+    "kind": "fraction",
+    "expr": "(a+b)/d",
+    "accept": ["equivalent", "mixed_number"],
+    "requireSimplified": false
+  },
   "hints": [{ "uz-Latn": "Maxrajlar bir xil...", "ru": "Знаменатели одинаковые..." }],
   "solution": { "uz-Latn": "...", "ru": "..." },
   "distractors": ["(a+b)/(2*d)", "(a*b)/d"]
@@ -653,23 +668,23 @@ run arbitrary code.
 
 ## 5. Indexing, partitioning and retention
 
-| Table | Hot query | Index |
-|---|---|---|
-| users | Login by phone | Partial UQ `(phone_e164) WHERE deleted_at IS NULL` |
-| topic_progress | Review queue | `(user_id, next_review_at)` |
-| attempt_items | Load an attempt | `(attempt_id, position)` |
-| attempts | Recent attempts | `(user_id, created_at DESC)` |
-| xp_ledger | Weekly XP | `(user_id, created_at)` |
-| outbox_events | Unpublished events | Partial `(created_at) WHERE published_at IS NULL` |
-| sessions | Active sessions | `(user_id) WHERE revoked_at IS NULL` |
+| Table          | Hot query          | Index                                              |
+| -------------- | ------------------ | -------------------------------------------------- |
+| users          | Login by phone     | Partial UQ `(phone_e164) WHERE deleted_at IS NULL` |
+| topic_progress | Review queue       | `(user_id, next_review_at)`                        |
+| attempt_items  | Load an attempt    | `(attempt_id, position)`                           |
+| attempts       | Recent attempts    | `(user_id, created_at DESC)`                       |
+| xp_ledger      | Weekly XP          | `(user_id, created_at)`                            |
+| outbox_events  | Unpublished events | Partial `(created_at) WHERE published_at IS NULL`  |
+| sessions       | Active sessions    | `(user_id) WHERE revoked_at IS NULL`               |
 
-| Partitioned table | Retention (config, pending lawyer review) |
-|---|---|
-| attempt_items | Lifetime of the account (needed for analytics), then deleted with the account |
-| learning_events | 24 months, then aggregated |
-| risk_events | 12 months |
-| xp_ledger | Lifetime of the account |
-| audit_log | 3 years |
+| Partitioned table | Retention (config, pending lawyer review)                                     |
+| ----------------- | ----------------------------------------------------------------------------- |
+| attempt_items     | Lifetime of the account (needed for analytics), then deleted with the account |
+| learning_events   | 24 months, then aggregated                                                    |
+| risk_events       | 12 months                                                                     |
+| xp_ledger         | Lifetime of the account                                                       |
+| audit_log         | 3 years                                                                       |
 
 Partitions are created ahead of time by a monthly worker job. Old partitions are
 dropped or detached in a single operation instead of slow `DELETE`s.
@@ -681,7 +696,7 @@ dropped or detached in a single operation instead of slow `DELETE`s.
 - Location: `packages/db/migrations/YYYYMMDDHHMM_<description>.ts`, each
   exporting `up(db)` and `down(db)`.
 - CI runs **up → down → up** on a throwaway database for every PR.
-- Production deploys run migrations as a separate step *before* the new code
+- Production deploys run migrations as a separate step _before_ the new code
   starts, using the **expand → migrate → contract** pattern: add a nullable
   column, backfill, then remove the old column in a later release. Each deploy
   is then compatible with both the old and new code, and rollback stays possible.
@@ -692,15 +707,15 @@ dropped or detached in a single operation instead of slow `DELETE`s.
 
 ## 7. Personal data map (for export and deletion)
 
-| Data | Tables | On export | On deletion |
-|---|---|---|---|
-| Identity | users, student_profiles, user_roles | ✅ | Hard-deleted after the grace period |
-| Consent records | consents | ✅ | Kept (legal evidence), the subject ID is pseudonymised |
-| Learning | topic_progress, attempts, attempt_items, learning_events | ✅ | Deleted; aggregates are kept without the user ID |
-| Gamification | xp_ledger, user_stats, user_badges, league_members | ✅ | Deleted |
-| Billing | orders, payments, refunds | ✅ | **Kept** as required by tax law (retention period to be confirmed); owner ID pseudonymised |
-| Security | sessions, risk_events, audit_log | Summary | Sessions deleted; audit and risk rows pseudonymised |
-| Certificates | certificates | ✅ | Revoked and deleted (the verification page then shows "revoked") |
+| Data            | Tables                                                   | On export | On deletion                                                                                |
+| --------------- | -------------------------------------------------------- | --------- | ------------------------------------------------------------------------------------------ |
+| Identity        | users, student_profiles, user_roles                      | ✅        | Hard-deleted after the grace period                                                        |
+| Consent records | consents                                                 | ✅        | Kept (legal evidence), the subject ID is pseudonymised                                     |
+| Learning        | topic_progress, attempts, attempt_items, learning_events | ✅        | Deleted; aggregates are kept without the user ID                                           |
+| Gamification    | xp_ledger, user_stats, user_badges, league_members       | ✅        | Deleted                                                                                    |
+| Billing         | orders, payments, refunds                                | ✅        | **Kept** as required by tax law (retention period to be confirmed); owner ID pseudonymised |
+| Security        | sessions, risk_events, audit_log                         | Summary   | Sessions deleted; audit and risk rows pseudonymised                                        |
+| Certificates    | certificates                                             | ✅        | Revoked and deleted (the verification page then shows "revoked")                           |
 
 Each module implements `PersonalDataProvider.export(userId)` and
 `.erase(userId)`. The `privacy` module calls them all, and a test fails
