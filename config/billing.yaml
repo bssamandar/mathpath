@@ -1,0 +1,25 @@
+# Plans and prices. Amounts are integers in tiyin (1 UZS = 100 tiyin), never floats (ADR-0008).
+# The prices below are PLACEHOLDERS until Samandar sets real ones.
+currency: UZS
+trialDays: 7
+plans:
+  - code: individual_monthly
+    interval: month
+    priceTiyin: 9900000 # placeholder: 99,000 UZS
+    maxStudents: 1
+  - code: individual_annual
+    interval: year
+    priceTiyin: 89900000 # placeholder: 899,000 UZS
+    maxStudents: 1
+  - code: family_annual
+    interval: year
+    priceTiyin: 149900000 # placeholder: 1,499,000 UZS
+    maxStudents: 4
+# Renewal: charge the saved card this many days before the period ends,
+# then retry on these day offsets before the subscription expires.
+renewal:
+  chargeDaysBeforeEnd: 1
+  retryAfterDays: [1, 3, 5]
+referral:
+  # Reward only after the invited account is verified and active on this many distinct days (C-23).
+  qualifyAfterActiveDays: 7

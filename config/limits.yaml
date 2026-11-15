@@ -1,0 +1,14 @@
+# Usage limits. Rate limits are per sliding window and enforced in Redis.
+freeTier:
+  dailyExercises: 20
+sessions:
+  # Account-sharing limits (C-24).
+  maxConcurrentPerStudent: 2
+  maxDevicesPerFamily: 4
+rateLimits:
+  # Requests per minute per signed-in user, for ordinary API routes.
+  apiPerUserPerMinute: 120
+  # Login failures (C-04).
+  loginFailuresPerAccount: { limit: 5, windowMinutes: 15 }
+  loginFailuresPerIpPrefix: { limit: 30, windowMinutes: 15 }
+  childPinFailures: { limit: 5, windowMinutes: 30 }
