@@ -73,6 +73,18 @@ describe('loadConfig', () => {
     expect(() => loadConfig(dir)).toThrow(/first risk band must start at 0/);
   });
 
+  it('rejects a password maximum below the minimum', () => {
+    const dir = copyConfig();
+    replaceIn(dir, 'auth.yaml', 'maxLength: 128', 'maxLength: 9');
+    expect(() => loadConfig(dir)).toThrow(/maxLength must be at least minLength/);
+  });
+
+  it('rejects Argon2 memory below the OWASP minimum', () => {
+    const dir = copyConfig();
+    replaceIn(dir, 'auth.yaml', 'memoryKiB: 65536', 'memoryKiB: 1024');
+    expect(() => loadConfig(dir)).toThrow(/auth\.yaml[\s\S]*memoryKiB/);
+  });
+
   it('reports every broken file at once', () => {
     const dir = copyConfig();
     replaceIn(dir, 'learning.yaml', 'masteryThreshold: 0.8', 'masteryThreshold: -1');

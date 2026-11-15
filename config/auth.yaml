@@ -1,0 +1,21 @@
+# Sign-in and session rules (ADR-0005, security plan C-01, C-02, C-06, C-08).
+# Secrets (signing keys, HMAC keys) are NOT here: they come from the environment.
+tokens:
+  # Short access tokens limit the damage of a leaked token; revocation is near-instant anyway.
+  accessTokenTtlMinutes: 15
+  # Refresh tokens rotate on every use; an idle session ends after this many days.
+  refreshTokenTtlDays: 30
+  # Ticket between "phone verified" and "account created" (POST /auth/register).
+  registrationTokenTtlMinutes: 15
+otp:
+  # A new code for the same phone can be requested after this many seconds.
+  resendAfterSeconds: 60
+password:
+  # NIST 800-63B: length, no composition rules (C-01).
+  minLength: 10
+  maxLength: 128
+  # Argon2id (C-02). Tune so one hash takes about 250 ms on production hardware.
+  argon2:
+    memoryKiB: 65536
+    timeCost: 3
+    parallelism: 1
