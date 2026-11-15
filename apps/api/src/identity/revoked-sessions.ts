@@ -6,6 +6,7 @@
  * live only as long as the longest access token. Production uses Redis so all
  * instances see the same list (added with the risk module).
  */
+import type { Redis } from 'ioredis';
 import type { Clock } from '../common/clock';
 
 export abstract class RevokedSessions {
@@ -36,5 +37,23 @@ export class MemoryRevokedSessions extends RevokedSessions {
       return Promise.resolve(false);
     }
     return Promise.resolve(true);
+  }
+}
+
+/** Shared list in Redis: one key per revoked session, expiring with its last access token. */
+export class RedisRevokedSessions extends RevokedSessions {
+  constructor(
+    private readonly redis: Redis,
+    private readonly prefix = 'revoked:',
+  ) {
+    super();
+  }
+
+  async add(sessionId: string, ttlMs: number): Promise<void> {
+    await this.redis.set(this.prefix + sessionId, '1', 'PX', ttlMs);
+  }
+
+  async has(sessionId: string): Promise<boolean> {
+    return (await this.redis.exists(this.prefix + sessionId)) === 1;
   }
 }
