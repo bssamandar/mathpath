@@ -59,17 +59,17 @@ Level 1, is too weak for children's data.
 
 **Role → permission summary (MVP)**
 
-| Permission                                 | student | parent       | teacher                 | author | reviewer | admin        | support   |
-| ------------------------------------------ | ------- | ------------ | ----------------------- | ------ | -------- | ------------ | --------- |
-| `learning:write`, `assessment:take`        | ✅      |              |                         |        |          |              |           |
-| `progress:read` (object-checked)           | own     | own children | consented class members |        |          | ✅ (audited) |           |
-| `family:*`, `billing:*`, `privacy:request` |         | ✅           |                         |        |          |              |           |
-| `classroom:manage`                         |         |              | ✅                      |        |          |              |           |
-| `content:author`                           |         |              |                         | ✅     | ✅       |              |           |
-| `content:review` (not own)                 |         |              |                         |        | ✅       |              |           |
-| `content:publish`                          |         |              |                         |        | ✅       | ✅           |           |
-| `admin:users`, `admin:risk`                |         |              |                         |        |          | ✅           | read only |
-| `admin:billing`, `admin:audit`             |         |              |                         |        |          | ✅           |           |
+| Permission                                 | student | parent       | teacher                 | author | reviewer | admin        | support                                               |
+| ------------------------------------------ | ------- | ------------ | ----------------------- | ------ | -------- | ------------ | ----------------------------------------------------- |
+| `learning:write`, `assessment:take`        | ✅      |              |                         |        |          |              |                                                       |
+| `progress:read` (object-checked)           | own     | own children | consented class members |        |          | ✅ (audited) |                                                       |
+| `family:*`, `billing:*`, `privacy:request` |         | ✅           |                         |        |          |              |                                                       |
+| `classroom:manage`                         |         |              | ✅                      |        |          |              |                                                       |
+| `content:author`                           |         |              |                         | ✅     | ✅       |              |                                                       |
+| `content:review` (not own)                 |         |              |                         |        | ✅       |              |                                                       |
+| `content:publish`                          |         |              |                         |        | ✅       | ✅           |                                                       |
+| `admin:users`, `admin:risk`                |         |              |                         |        |          | ✅           | read only (with the support console; none until then) |
+| `admin:billing`, `admin:audit`             |         |              |                         |        |          | ✅           |                                                       |
 
 ---
 

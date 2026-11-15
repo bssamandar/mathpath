@@ -25,6 +25,11 @@ project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Argon2id passwords with common and breached password checks; EdDSA access
   tokens; rotating refresh tokens that revoke the session on reuse; HttpOnly
   cookies; a session-bound CSRF token (ADR-0010); logout with immediate revocation.
+- Permissions: every route declares `@Access(...)`; undeclared routes are refused,
+  staff permissions need 2FA, and a route-scan test keeps code and the OpenAPI
+  `x-permission` values in sync (C-09).
+- Audit log with a SHA-256 hash chain for sign-up, sign-in, failed sign-in,
+  logout and refresh-token reuse, plus `verifyAuditChain` to detect edits (C-33).
 - `config/auth.yaml` for token lifetimes, OTP resend delay and password rules.
 - Migration `2026111502_terms_acceptance`: the terms version each user accepted.
 - Errors are returned as RFC 9457 problem details with a stable `code` and request ID.
