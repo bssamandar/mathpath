@@ -47,13 +47,50 @@ const envSchema = z
     // Optional in development: a random one is generated at start-up.
     AUTH_HMAC_SECRET: optionalSecret(z.string().min(32)),
 
+    // Shared state for rate limits, revoked sessions and SMS budgets.
+    REDIS_URL: optionalSecret(z.string().regex(/^rediss?:\/\//, 'expected a redis:// URL')),
+
     // `log` prints SMS to the console for local development only.
-    SMS_PROVIDER: z.enum(['log']).default('log'),
+    SMS_PROVIDER: z.enum(['log', 'eskiz']).default('log'),
+    ESKIZ_EMAIL: optionalSecret(z.string().min(3)),
+    ESKIZ_PASSWORD: optionalSecret(z.string().min(1)),
+    ESKIZ_SENDER: z.string().min(1).max(11).default('4546'),
+
+    // `turnstile` is Cloudflare Turnstile (chosen 2026-11-15). `dev` accepts the
+    // token "dev-pass" so the flow can be tried without a CAPTCHA account.
+    CAPTCHA_PROVIDER: z.enum(['turnstile', 'dev']).default('dev'),
+    TURNSTILE_SECRET_KEY: optionalSecret(z.string().min(1)),
     // `hibp` checks new passwords against Have I Been Pwned with k-anonymity (C-02).
     BREACHED_PASSWORD_CHECK: z.enum(['hibp', 'off']).default('hibp'),
   })
   .superRefine((env, ctx) => {
+    if (env.SMS_PROVIDER === 'eskiz') {
+      for (const key of ['ESKIZ_EMAIL', 'ESKIZ_PASSWORD'] as const) {
+        if (!env[key]) ctx.addIssue({ code: 'custom', path: [key], message: 'required for Eskiz' });
+      }
+    }
+    if (env.CAPTCHA_PROVIDER === 'turnstile' && !env.TURNSTILE_SECRET_KEY) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['TURNSTILE_SECRET_KEY'],
+        message: 'required for Turnstile',
+      });
+    }
     if (env.NODE_ENV !== 'production') return;
+    if (!env.REDIS_URL) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['REDIS_URL'],
+        message: 'required in production: in-memory limits do not work across instances',
+      });
+    }
+    if (env.CAPTCHA_PROVIDER === 'dev') {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['CAPTCHA_PROVIDER'],
+        message: 'the dev CAPTCHA accepts a fixed token and is not allowed in production',
+      });
+    }
     // Generated keys would change on every restart and differ between
     // instances, signing everybody out; they are never acceptable in production.
     for (const key of ['JWT_PRIVATE_KEY', 'AUTH_HMAC_SECRET'] as const) {

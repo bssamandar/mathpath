@@ -8,4 +8,6 @@ export const smsMessages = {
     `MathPath kodi: ${code}. Uni hech kimga bermang. / Kod: ${code}. Никому не сообщайте.`,
   alreadyRegistered: (): string =>
     'Bu raqam MathPath’da ro‘yxatdan o‘tgan. Kirish sahifasidan foydalaning. / Номер уже зарегистрирован, войдите в аккаунт.',
+  accountLocked: (): string =>
+    'MathPath: hisobingizga ko‘p marta noto‘g‘ri parol kiritildi. Siz bo‘lmasangiz, parolni almashtiring. / Много неверных паролей. Если это не вы, смените пароль.',
 } as const;

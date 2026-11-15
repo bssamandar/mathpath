@@ -9,7 +9,7 @@ import { Body, Controller, HttpCode, Post, Req, Res } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { Clock } from '../common/clock';
-import { ipPrefix, userAgentSummary } from '../common/client-info';
+import { ipPrefix, looksAutomated, userAgentSummary } from '../common/client-info';
 import { ProblemException, requestIdOf } from '../common/problem';
 import { deviceToken, locale, parseInput, personName, phoneE164 } from '../common/validation';
 import { AuthService } from './auth.service';
@@ -89,10 +89,13 @@ export class AuthController {
   @HttpCode(202)
   async requestOtp(@Body() raw: unknown, @Req() req: Request) {
     const body = parseInput(otpRequestBody, raw);
+    const client = clientOf(req);
     return this.otp.request({
       phone: body.phone,
       purpose: body.purpose,
-      ipPrefix: ipPrefix(req.ip),
+      ipPrefix: client.ipPrefix,
+      automationSuspected: client.automationSuspected,
+      captchaToken: body.captchaToken,
     });
   }
 
@@ -140,7 +143,12 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const body = parseInput(loginBody, raw);
-    const session = await this.auth.login(body.phone, body.password, clientOf(req));
+    const session = await this.auth.login(
+      body.phone,
+      body.password,
+      clientOf(req),
+      body.captchaToken,
+    );
     return this.respond(req, res, session);
   }
 
@@ -201,5 +209,6 @@ function clientOf(req: Request): ClientContext {
     ipPrefix: ipPrefix(req.ip),
     userAgentSummary: userAgentSummary(req.get('user-agent')),
     requestId: requestIdOf(req),
+    automationSuspected: looksAutomated(req.get('user-agent')),
   };
 }

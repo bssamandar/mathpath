@@ -28,6 +28,8 @@ export interface ClientContext {
   userAgentSummary: string | null;
   /** For the audit log, so an entry can be matched to the request in the logs. */
   requestId: string | null;
+  /** The user agent looks like a script or headless browser (a risk signal). */
+  automationSuspected: boolean;
 }
 
 /** How the user proved who they are; recorded in the audit log. */

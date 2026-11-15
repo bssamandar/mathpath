@@ -12,8 +12,12 @@ import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import type { Kysely } from 'kysely';
 import { AuditService } from '../audit/audit.service';
-import { Clock, SystemClock } from '../common/clock';
-import { MemoryRateLimiter, RateLimiter } from '../common/rate-limiter';
+import type { Redis } from 'ioredis';
+import { Clock } from '../common/clock';
+import { RateLimiter } from '../common/rate-limiter';
+import { REDIS } from '../redis/redis.module';
+import { RiskService } from '../risk/risk.service';
+import { SmsBudget } from '../risk/sms-budget';
 import type { Env } from '../config/env';
 import { BUSINESS_RULES, ENV } from '../config/tokens';
 import { DB } from '../database/database.module';
@@ -28,7 +32,8 @@ import {
 import { AuthKeys } from './keys';
 import { OtpService } from './otp.service';
 import { PasswordService } from './password.service';
-import { MemoryRevokedSessions, RevokedSessions } from './revoked-sessions';
+import { MemoryRevokedSessions, RedisRevokedSessions, RevokedSessions } from './revoked-sessions';
+import { EskizSmsSender } from './sms/eskiz-sms-sender';
 import { SessionService } from './session.service';
 import { LogSmsSender, SmsSender } from './sms/sms-sender';
 import { TokenService } from './token.service';
@@ -36,18 +41,24 @@ import { TokenService } from './token.service';
 @Module({
   controllers: [AuthController],
   providers: [
-    { provide: Clock, useClass: SystemClock },
     { provide: AuthKeys, inject: [ENV], useFactory: (env: Env) => AuthKeys.fromEnv(env) },
-    { provide: SmsSender, useClass: LogSmsSender },
     {
-      provide: RateLimiter,
-      inject: [Clock],
-      useFactory: (clock: Clock) => new MemoryRateLimiter(clock),
+      provide: SmsSender,
+      inject: [ENV],
+      useFactory: (env: Env): SmsSender =>
+        env.SMS_PROVIDER === 'eskiz'
+          ? new EskizSmsSender({
+              email: env.ESKIZ_EMAIL!,
+              password: env.ESKIZ_PASSWORD!,
+              sender: env.ESKIZ_SENDER,
+            })
+          : new LogSmsSender(),
     },
     {
       provide: RevokedSessions,
-      inject: [Clock],
-      useFactory: (clock: Clock) => new MemoryRevokedSessions(clock),
+      inject: [REDIS, Clock],
+      useFactory: (redis: Redis | null, clock: Clock) =>
+        redis ? new RedisRevokedSessions(redis) : new MemoryRevokedSessions(clock),
     },
     {
       provide: BreachedPasswordChecker,
@@ -84,7 +95,7 @@ import { TokenService } from './token.service';
     },
     {
       provide: OtpService,
-      inject: [DB, SmsSender, RateLimiter, AuthKeys, Clock, BUSINESS_RULES],
+      inject: [DB, SmsSender, RateLimiter, AuthKeys, Clock, BUSINESS_RULES, RiskService, SmsBudget],
       useFactory: (
         db: Kysely<Database>,
         sms: SmsSender,
@@ -92,6 +103,8 @@ import { TokenService } from './token.service';
         keys: AuthKeys,
         clock: Clock,
         rules: AppConfig,
+        risk: RiskService,
+        budget: SmsBudget,
       ) =>
         new OtpService(
           db,
@@ -101,6 +114,8 @@ import { TokenService } from './token.service';
           clock,
           rules.risk.otp,
           rules.auth.otp.resendAfterSeconds,
+          risk,
+          budget,
         ),
     },
     {
@@ -115,6 +130,8 @@ import { TokenService } from './token.service';
         Clock,
         BUSINESS_RULES,
         AuditService,
+        RiskService,
+        SmsSender,
       ],
       useFactory: (
         db: Kysely<Database>,
@@ -126,6 +143,8 @@ import { TokenService } from './token.service';
         clock: Clock,
         rules: AppConfig,
         audit: AuditService,
+        risk: RiskService,
+        sms: SmsSender,
       ) =>
         new AuthService(
           db,
@@ -137,6 +156,8 @@ import { TokenService } from './token.service';
           clock,
           rules.limits.rateLimits,
           audit,
+          risk,
+          sms,
         ),
     },
     { provide: APP_GUARD, useClass: AuthGuard },
