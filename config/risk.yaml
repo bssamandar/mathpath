@@ -1,0 +1,32 @@
+# Anti-abuse rules (security plan §6). Weights are a starting point and will be
+# tuned with real data; every scored decision is logged as a risk_event.
+otp:
+  allowedCountryCodes: ['+998']
+  codeLength: 6
+  ttlSeconds: 300
+  maxAttemptsPerChallenge: 5
+  perPhone: { limit: 3, windowMinutes: 10 }
+  perPhoneDaily: 10
+  perIpPrefix: { limit: 20, windowMinutes: 60 }
+  perDevice: { limit: 5, windowMinutes: 60 }
+smsBudget:
+  # Daily SMS spend cap in tiyin. Alert at alertRatio; at 100% require CAPTCHA for every OTP (C-20).
+  dailyCapTiyin: 50000000 # placeholder: 500,000 UZS
+  alertRatio: 0.7
+signals:
+  ipIsDatacenterOrVpn: 25
+  ipReputationBad: 30
+  deviceOnManyAccounts: 30
+  otpVelocityExceeded: 20
+  disposableEmail: 15
+  headlessOrEmulator: 25
+  phonePrefixFlagged: 40
+  newDeviceAndNewIpPrefix: 10
+  failedLoginEach: 5
+  failedLoginMax: 25
+# Score thresholds, ascending. The first band whose `from` is <= score applies.
+actions:
+  - { from: 0, action: allow }
+  - { from: 30, action: invisible_captcha }
+  - { from: 60, action: step_up }
+  - { from: 80, action: block_and_review }

@@ -1,0 +1,25 @@
+# Learning rules. Values here are business decisions, not code.
+# Changing one is a reviewed pull request; the app refuses to start if a value is invalid.
+
+# A topic counts as mastered at this mastery-test score (0-1). PRD §6.2.
+masteryThreshold: 0.8
+
+# Spaced-repetition review intervals in days after mastery (SM-2 style, ADR-0006).
+reviewIntervalsDays: [1, 3, 7, 16, 35]
+
+# Feedback policy during practice: a hint after the first mistake,
+# the full worked solution after this many mistakes on the same item.
+practice:
+  hintAfterMistakes: 1
+  solutionAfterMistakes: 2
+  # Correct answers needed before the mastery test unlocks.
+  minCorrectBeforeMasteryTest: 6
+
+# Gap routing limits (architecture §5.2). They stop a struggling student
+# from being sent down an endless chain of prerequisite detours.
+gapRouting:
+  maxDepth: 2
+  maxDetoursPerDay: 1
+  # A mastered prerequisite older than this is treated as possibly forgotten.
+  staleAfterDays: 60
+  miniCheckItems: 3

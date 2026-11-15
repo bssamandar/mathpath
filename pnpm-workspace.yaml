@@ -1,0 +1,18 @@
+packages:
+  - apps/*
+  - packages/*
+
+# Supply-chain hardening (security plan C-42): only these packages may run
+# install scripts. Everything else is installed without executing code.
+onlyBuiltDependencies:
+  - '@swc/core'
+  - esbuild
+  - sharp
+
+# Security overrides for transitive dependencies with known advisories.
+# Remove an entry once the direct dependency ships the fixed version.
+overrides:
+  multer: 2.5.0 # via @nestjs/platform-express (high severity advisory)
+  postcss: 8.5.23 # via next and vite (high/moderate advisories)
+  glob: 14.0.2 # via @vitest/coverage-v8 (moderate advisory)
+  minimatch: 11.0.1 # via typescript-eslint (moderate advisory)

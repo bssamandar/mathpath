@@ -1,0 +1,8 @@
+# Locales the UI supports, and locales content must be complete in before publishing.
+uiLocales: ['uz-Latn', 'ru', 'en']
+requiredContentLocales: ['uz-Latn', 'ru']
+defaultLocale: 'uz-Latn'
+questionTypes: [single_choice, multiple_choice, numeric, formula, matching, ordering]
+video:
+  minDurationSeconds: 120
+  maxDurationSeconds: 600
