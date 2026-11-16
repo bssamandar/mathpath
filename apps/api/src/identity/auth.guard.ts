@@ -99,6 +99,9 @@ export class AuthGuard implements CanActivate {
       throw new ProblemException(403, 'FORBIDDEN', 'You do not have access to this action.');
     }
     if (access === 'public') return true;
+    // Payment providers have no session: their adapter checks the provider's
+    // own credentials or signature before reading the body (C-27).
+    if (access.startsWith('provider:')) return true;
     if (!claims) throw new ProblemException(401, 'UNAUTHENTICATED', 'Please sign in.');
     if (access === 'authenticated') return true;
     if (permissionsFor(claims.roles, claims.mfaVerified).has(access)) return true;

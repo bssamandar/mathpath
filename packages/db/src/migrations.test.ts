@@ -49,6 +49,11 @@ const expectedTables: TableName[] = [
   'topic_progress',
   'learning_detours',
   'learning_events',
+  'orders',
+  'payments',
+  'payment_callbacks',
+  'subscriptions',
+  'subscription_members',
   'question_templates',
   'refresh_tokens',
   'risk_events',
@@ -443,6 +448,82 @@ describe('knowledge graph', () => {
     await expect(edge(a, c)).rejects.toThrow(/cycle/);
     await expect(edge(a, b)).rejects.toThrow(/cycle/);
     await edge(c, a); // a shortcut is fine
+  });
+});
+
+describe('billing constraints', () => {
+  async function insertOrder() {
+    const id = newId();
+    await db
+      .insertInto('orders')
+      .values({
+        id,
+        owner_id: await insertUser({ phone_e164: null }),
+        plan_code: 'individual_monthly',
+        plan_interval: 'month',
+        student_ids: [newId()],
+        amount_tiyin: 9_900_000,
+        provider: 'payme',
+        idempotency_key: newId(),
+        expires_at: new Date(Date.now() + 3_600_000),
+      })
+      .execute();
+    return id;
+  }
+  const insertPayment = async (orderId: string, txn = newId()) => {
+    const id = newId();
+    await db
+      .insertInto('payments')
+      .values({
+        id,
+        order_id: orderId,
+        provider: 'payme',
+        provider_txn_id: txn,
+        amount_tiyin: 9_900_000,
+      })
+      .execute();
+    return id;
+  };
+  const setStatus = (id: string, status: 'pending' | 'paid' | 'cancelled' | 'refunded') =>
+    db
+      .updateTable('payments')
+      .set({
+        status,
+        paid_at: status === 'paid' ? new Date() : undefined,
+        cancelled_at: status === 'cancelled' || status === 'refunded' ? new Date() : undefined,
+      })
+      .where('id', '=', id)
+      .execute();
+
+  it('allows only forward payment states', async () => {
+    const payment = await insertPayment(await insertOrder());
+    await setStatus(payment, 'paid');
+    await expect(setStatus(payment, 'pending')).rejects.toThrow(/cannot go from paid to pending/);
+    await setStatus(payment, 'refunded');
+    await expect(setStatus(payment, 'paid')).rejects.toThrow(/cannot go from refunded/);
+  });
+
+  it('keeps one live payment per order and one row per provider transaction', async () => {
+    const order = await insertOrder();
+    const txn = newId();
+    const first = await insertPayment(order, txn);
+    await expect(insertPayment(order)).rejects.toThrow(/payments_one_live_per_order/);
+    await expect(insertPayment(await insertOrder(), txn)).rejects.toThrow(/provider_txn_id/);
+    await setStatus(first, 'cancelled');
+    await insertPayment(order); // a new attempt after a cancelled one
+  });
+
+  it('stores money as whole tiyin and refuses non-positive amounts', async () => {
+    const order = await insertOrder();
+    const row = await db
+      .selectFrom('orders')
+      .select('amount_tiyin')
+      .where('id', '=', order)
+      .executeTakeFirstOrThrow();
+    expect(Number(row.amount_tiyin)).toBe(9_900_000);
+    await expect(
+      db.updateTable('orders').set({ amount_tiyin: 0 }).where('id', '=', order).execute(),
+    ).rejects.toThrow(/check/);
   });
 });
 

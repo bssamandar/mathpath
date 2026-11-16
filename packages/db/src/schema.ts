@@ -448,6 +448,86 @@ export interface LearningEventsTable {
   created_at: CreatedAt;
 }
 
+/** Money in tiyin (bigint). Drivers return a string, number or BigInt, so read it with Number(). */
+type Tiyin = ColumnType<string | number | bigint, number, number>;
+export type OrderStatus = 'created' | 'pending' | 'paid' | 'cancelled' | 'expired';
+export type PaymentStatus =
+  | 'pending'
+  | 'paid'
+  | 'cancelled'
+  | 'refunded'
+  | 'partially_refunded'
+  | 'failed';
+export type SubscriptionStatus = 'trialing' | 'active' | 'past_due' | 'cancelled' | 'expired';
+export type PaymentProviderCode = 'payme' | 'click';
+
+export interface OrdersTable {
+  id: string;
+  owner_id: string;
+  plan_code: string;
+  plan_interval: 'month' | 'year';
+  student_ids: string[];
+  amount_tiyin: Tiyin;
+  discount_tiyin: ColumnType<string | number | bigint, number | undefined, number>;
+  provider: PaymentProviderCode;
+  status: ColumnType<OrderStatus, OrderStatus | undefined, OrderStatus>;
+  idempotency_key: string;
+  return_url: string | null;
+  expires_at: Timestamp;
+  paid_at: NullableTimestamp;
+  created_at: ColumnType<Date, Date | undefined, never>;
+  updated_at: ColumnType<Date, Date | undefined, Date>;
+}
+
+export interface SubscriptionsTable {
+  id: string;
+  owner_id: string;
+  order_id: string | null;
+  plan_code: string;
+  status: SubscriptionStatus;
+  seats: number;
+  price_tiyin: Tiyin;
+  current_period_start: Timestamp;
+  current_period_end: Timestamp;
+  cancel_at_period_end: ColumnType<boolean, boolean | undefined, boolean>;
+  created_at: ColumnType<Date, Date | undefined, never>;
+  updated_at: ColumnType<Date, Date | undefined, Date>;
+}
+
+export interface SubscriptionMembersTable {
+  subscription_id: string;
+  student_id: string;
+}
+
+export interface PaymentsTable {
+  id: string;
+  order_id: string;
+  subscription_id: string | null;
+  provider: PaymentProviderCode;
+  provider_txn_id: string;
+  amount_tiyin: Tiyin;
+  status: ColumnType<PaymentStatus, PaymentStatus | undefined, PaymentStatus>;
+  provider_created_at: NullableTimestamp;
+  created_at: ColumnType<Date, Date | undefined, never>;
+  paid_at: NullableTimestamp;
+  cancelled_at: NullableTimestamp;
+  /** The provider's cancel reason code (Payme: 1–5, 10). */
+  cancel_reason: number | null;
+  fiscal_receipt: Json<Record<string, unknown>> | null;
+}
+
+export interface PaymentCallbacksTable {
+  id: string;
+  provider: string;
+  /** For example `CreateTransaction`, `prepare`, `complete`. */
+  method: string;
+  external_id: string | null;
+  auth_valid: boolean;
+  payload: Json<Record<string, unknown>>;
+  response: Json<Record<string, unknown>>;
+  received_at: ColumnType<Date, Date | undefined, never>;
+}
+
 export interface TopicPrerequisitesTable {
   topic_id: string;
   prerequisite_id: string;
@@ -548,6 +628,11 @@ export interface Database {
   topic_progress: TopicProgressTable;
   learning_detours: LearningDetoursTable;
   learning_events: LearningEventsTable;
+  orders: OrdersTable;
+  subscriptions: SubscriptionsTable;
+  subscription_members: SubscriptionMembersTable;
+  payments: PaymentsTable;
+  payment_callbacks: PaymentCallbacksTable;
 }
 
 export type TableName = keyof Database;

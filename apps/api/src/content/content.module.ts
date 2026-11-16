@@ -10,7 +10,8 @@ import { AuditService } from '../audit/audit.service';
 import { Clock } from '../common/clock';
 import { BUSINESS_RULES } from '../config/tokens';
 import { DB } from '../database/database.module';
-import { CatalogueService, Entitlements, NoEntitlements } from './catalogue.service';
+import { SubscriptionEntitlements } from '../billing/entitlements';
+import { CatalogueService, Entitlements } from './catalogue.service';
 import { CatalogueController, StudioController } from './content.controller';
 import { QuestionStudioService } from './question-studio.service';
 import { StudioService } from './studio.service';
@@ -18,8 +19,12 @@ import { StudioService } from './studio.service';
 @Module({
   controllers: [CatalogueController, StudioController],
   providers: [
-    // Replaced by the billing module's implementation in step 6.5.
-    { provide: Entitlements, useClass: NoEntitlements },
+    // Paid access comes from subscriptions (billing); free topics stay open to all.
+    {
+      provide: Entitlements,
+      inject: [DB, Clock],
+      useFactory: (db: Kysely<Database>, clock: Clock) => new SubscriptionEntitlements(db, clock),
+    },
     {
       provide: CatalogueService,
       inject: [DB, Entitlements, BUSINESS_RULES],

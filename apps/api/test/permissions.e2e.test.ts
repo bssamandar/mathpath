@@ -111,8 +111,10 @@ describe('permission guard (C-09)', () => {
       .expect(200);
   });
 
-  it('refuses payment callbacks until provider signature checks exist', async () => {
-    await http().post('/api/v1/probe/payme').expect(401);
+  it('lets provider callbacks past the session check: their adapter authenticates them', async () => {
+    // The real endpoints check the provider's credentials first (test/billing.e2e.test.ts).
+    const res = await http().post('/api/v1/probe/payme').expect(201);
+    expect(res.body).toEqual({ reached: true });
   });
 });
 

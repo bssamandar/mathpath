@@ -15,18 +15,12 @@ import { type LessonStep, lessonStep, pickText } from './documents';
 /** Answers "may this user open this paid topic?". Billing provides the real one (step 6.5). */
 export abstract class Entitlements {
   abstract hasAccess(userId: string, topicId: string): Promise<boolean>;
-  /** True while the learner has a paid plan; free users get the daily exercise limit. */
-  abstract hasSubscription(userId: string): Promise<boolean>;
-}
-
-/** Until billing exists, nobody has a paid entitlement; free topics stay open. */
-export class NoEntitlements extends Entitlements {
-  hasAccess(): Promise<boolean> {
-    return Promise.resolve(false);
-  }
-  hasSubscription(): Promise<boolean> {
-    return Promise.resolve(false);
-  }
+  /**
+   * True while the learner has a paid plan; free users get the daily exercise
+   * limit. Pass the open transaction when there is one: PGlite has a single
+   * connection, so a query on the pool inside a transaction would wait forever.
+   */
+  abstract hasSubscription(userId: string, db?: Kysely<Database>): Promise<boolean>;
 }
 
 export interface TrackView {

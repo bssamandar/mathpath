@@ -134,6 +134,17 @@ project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   options, hints, solution) with live samples from the engine rendered by
   KaTeX like the learner app, problems shown next to the part they are about,
   and the same review and publish workflow as lessons.
+- Billing (`apps/api` billing module): plans from config, `POST /checkout`
+  with a required Idempotency-Key (one order per key), order status,
+  subscriptions and cancel at period end. A paid order creates a subscription
+  for the chosen children; a second purchase while covered starts when the
+  current period ends; a refund ends access at once. Paid topics and unlimited
+  practice now follow the subscription.
+- Payme Merchant API at `POST /payments/payme` (all six methods): merchant key
+  checked in constant time before anything else, every call logged, repeated
+  calls answered from the stored transaction, 12-hour timeout, refund after
+  payment, optional fiscal receipt details. Providers are switched on with
+  `PAYMENT_PROVIDERS`.
 - Errors are returned as RFC 9457 problem details with a stable `code` and request ID.
 - CI (format, lint, typecheck, tests with an 80% coverage gate, build) and security
   scanning (gitleaks, pnpm audit, OSV-Scanner, Semgrep, CodeQL); Renovate.

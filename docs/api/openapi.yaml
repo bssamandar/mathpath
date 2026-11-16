@@ -1178,9 +1178,20 @@ paths:
       description: |
         Price is taken from config and snapshotted on the order. Card details
         are entered on the provider's page; MathPath never receives them.
+        The Idempotency-Key header is required here: repeating a key returns the
+        same order. Every student must be one of the parent's linked children.
+        If a student is already covered, the new period starts when the current
+        coverage ends. Errors: 400 IDEMPOTENCY_KEY_REQUIRED; 404 STUDENT_NOT_FOUND;
+        409 TOO_MANY_STUDENTS; 422 PLAN_NOT_FOUND, PROVIDER_UNAVAILABLE,
+        PROMO_INVALID (promo codes arrive in step 6.5c), RETURN_URL_NOT_ALLOWED.
       x-permission: billing:purchase
       parameters:
-        - $ref: '#/components/parameters/IdempotencyKey'
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: Client-generated UUID. Repeating it returns the original order.
+          schema: { type: string, format: uuid }
+        - { name: locale, in: query, required: false, schema: { $ref: '#/components/schemas/Locale' } }
       requestBody:
         required: true
         content:
@@ -1195,10 +1206,18 @@ paths:
                 studentIds:
                   type: array
                   minItems: 1
+                  maxItems: 10
                   items: { $ref: '#/components/schemas/Id' }
-                promoCode: { type: string, maxLength: 32 }
-                saveCardForRenewal: { type: boolean, default: true }
-                returnUrl: { type: string, format: uri, description: Must match an allow-listed origin. }
+                promoCode: { type: string, minLength: 1, maxLength: 32 }
+                saveCardForRenewal:
+                  type: boolean
+                  default: true
+                  description: Accepted now; saved cards arrive with auto-renewal.
+                returnUrl:
+                  type: string
+                  format: uri
+                  maxLength: 500
+                  description: Must be on an allow-listed web origin (CORS_ORIGINS).
       responses:
         '201':
           description: Order created.
@@ -1213,13 +1232,16 @@ paths:
                   redirectUrl: { type: string, format: uri }
                   expiresAt: { type: string, format: date-time }
         '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
 
   /orders/{orderId}:
     get:
       tags: [Billing]
       operationId: getOrder
       summary: Order status (polled by the return page).
+      description: Only the parent who placed the order sees it; anyone else gets 404 ORDER_NOT_FOUND.
       x-permission: billing:read
       parameters:
         - { name: orderId, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } }
@@ -1230,10 +1252,11 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [orderId, status]
+                required: [orderId, status, amount]
                 properties:
                   orderId: { $ref: '#/components/schemas/Id' }
                   status: { type: string, enum: [created, pending, paid, cancelled, expired] }
+                  amount: { $ref: '#/components/schemas/Money' }
                   subscription: { $ref: '#/components/schemas/Subscription' }
         '404': { $ref: '#/components/responses/NotFound' }
 
@@ -1241,7 +1264,7 @@ paths:
     get:
       tags: [Billing]
       operationId: listSubscriptions
-      summary: The parent's subscriptions, payment methods and payment history.
+      summary: The parent's subscriptions (saved cards and payment history join later).
       x-permission: billing:read
       responses:
         '200':
@@ -1270,6 +1293,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Subscription' }
+        '404': { $ref: '#/components/responses/NotFound' }
 
   /trials:
     post:
@@ -1312,7 +1336,12 @@ paths:
         statement). Repeated calls with the same transaction ID return the stored
         result. Optionally restricted to the provider's published IP ranges at the proxy.
         Body/response shapes follow Payme's specification and are validated in
-        the adapter, not in this contract.
+        the adapter, not in this contract. Answers 404 PROVIDER_UNAVAILABLE when
+        Payme is not listed in PAYMENT_PROVIDERS. JSON-RPC error codes used:
+        -32504 bad credentials, -32600 invalid request, -32601 unknown method,
+        -32400 system error, -31001 wrong amount, -31003 transaction not found,
+        -31008 cannot perform (cancelled or timed out after 12 h), -31050 order
+        not found, -31051 order not payable, -31052 order has another live payment.
       security: []
       x-permission: provider:payme
       requestBody:
