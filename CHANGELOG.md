@@ -46,6 +46,12 @@ project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   lock the profile and notify the parent; failures per family code are limited.
   Parents can switch to a child profile (linked session). A student keeps at
   most two live sessions (C-24).
+- Web app sign-in screens (`apps/web`): welcome with language choice, parent
+  sign-up (phone, SMS code, name and password), parent sign-in, student sign-in
+  with family code and PIN, and placeholder home pages. Texts in Uzbek, Russian
+  and English. Turnstile appears when the API asks for a CAPTCHA. Tokens stay
+  in HttpOnly cookies; refreshes are serialised across tabs (Web Locks). A
+  per-request CSP nonce is set in middleware.
 - `config/auth.yaml` for token lifetimes, OTP resend delay and password rules.
 - Migration `2026111502_terms_acceptance`: the terms version each user accepted.
 - Errors are returned as RFC 9457 problem details with a stable `code` and request ID.
