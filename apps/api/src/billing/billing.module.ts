@@ -9,23 +9,48 @@ import { Module } from '@nestjs/common';
 import type { Kysely } from 'kysely';
 import { AuditService } from '../audit/audit.service';
 import { Clock } from '../common/clock';
+import { RateLimiter } from '../common/rate-limiter';
 import type { Env } from '../config/env';
 import { BUSINESS_RULES, ENV } from '../config/tokens';
 import { DB } from '../database/database.module';
-import { BillingController, PaymentCallbacksController } from './billing.controller';
+import {
+  AdminPromoController,
+  BillingController,
+  PaymentCallbacksController,
+} from './billing.controller';
 import { BillingService } from './billing.service';
 import { PAYMENT_PROVIDERS as PROVIDERS, type PaymentProvider } from './payment-provider';
 import { ClickProvider } from './click/click';
 import { PaymeProvider } from './payme/payme';
+import { PromoService } from './promo.service';
 
 @Module({
-  controllers: [BillingController, PaymentCallbacksController],
+  controllers: [BillingController, AdminPromoController, PaymentCallbacksController],
   providers: [
     // Filled by each adapter's factory below; read at request time.
     { provide: PROVIDERS, useFactory: () => new Map<string, PaymentProvider>() },
     {
+      provide: PromoService,
+      inject: [DB, AuditService, Clock, BUSINESS_RULES, RateLimiter],
+      useFactory: (
+        db: Kysely<Database>,
+        audit: AuditService,
+        clock: Clock,
+        rules: AppConfig,
+        limiter: RateLimiter,
+      ) =>
+        new PromoService(
+          db,
+          audit,
+          clock,
+          rules.billing,
+          limiter,
+          rules.limits.rateLimits.promoChecksPerUser,
+        ),
+    },
+    {
       provide: BillingService,
-      inject: [DB, AuditService, Clock, BUSINESS_RULES, PROVIDERS, ENV],
+      inject: [DB, AuditService, Clock, BUSINESS_RULES, PROVIDERS, ENV, PromoService],
       useFactory: (
         db: Kysely<Database>,
         audit: AuditService,
@@ -33,7 +58,8 @@ import { PaymeProvider } from './payme/payme';
         rules: AppConfig,
         providers: Map<string, PaymentProvider>,
         env: Env,
-      ) => new BillingService(db, audit, clock, rules.billing, providers, env.CORS_ORIGINS),
+        promo: PromoService,
+      ) => new BillingService(db, audit, clock, rules.billing, providers, env.CORS_ORIGINS, promo),
     },
     {
       provide: PaymeProvider,

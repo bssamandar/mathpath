@@ -18,3 +18,5 @@ rateLimits:
   # After this many failures the account is locked for the rest of the window
   # and the owner gets an SMS (C-04).
   accountLock: { limit: 10, windowMinutes: 60 }
+  # Promo code checks per parent (validate and checkout with a code), against guessing codes.
+  promoChecksPerUser: { limit: 10, windowMinutes: 10 }

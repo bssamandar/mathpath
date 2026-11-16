@@ -52,6 +52,9 @@ const expectedTables: TableName[] = [
   'orders',
   'payments',
   'payment_callbacks',
+  'promo_codes',
+  'promo_redemptions',
+  'trials',
   'subscriptions',
   'subscription_members',
   'question_templates',
@@ -538,6 +541,67 @@ describe('billing constraints', () => {
     await expect(
       db.updateTable('orders').set({ amount_tiyin: 0 }).where('id', '=', order).execute(),
     ).rejects.toThrow(/check/);
+  });
+});
+
+describe('promo code and trial constraints', () => {
+  const promo = async (values: Record<string, unknown>) =>
+    db
+      .insertInto('promo_codes')
+      .values({
+        id: newId(),
+        code: 'SPRING25',
+        discount_type: 'percent',
+        value: 25,
+        valid_from: new Date('2026-01-01'),
+        valid_to: new Date('2027-01-01'),
+        created_by: await insertUser({ phone_e164: null }),
+        ...values,
+      } as never)
+      .execute();
+
+  it('keeps codes upper-case and unique, and percentages at most 100', async () => {
+    await promo({});
+    await expect(promo({})).rejects.toThrow(/promo_codes_code_key/);
+    await expect(promo({ code: 'lower' })).rejects.toThrow(/check/);
+    await expect(promo({ code: 'BIG', value: 101 })).rejects.toThrow(/check/);
+    await expect(
+      promo({ code: 'FIXED101', discount_type: 'fixed', value: 101 }),
+    ).resolves.toBeDefined();
+    await expect(promo({ code: 'BACKWARDS', valid_to: new Date('2025-01-01') })).rejects.toThrow(
+      /check/,
+    );
+  });
+
+  it('allows one trial per account', async () => {
+    const owner = await insertUser({ phone_e164: null });
+    const sub = newId();
+    await db
+      .insertInto('subscriptions')
+      .values({
+        id: sub,
+        owner_id: owner,
+        plan_code: 'trial',
+        status: 'trialing',
+        seats: 1,
+        price_tiyin: 0,
+        current_period_start: new Date('2026-11-01'),
+        current_period_end: new Date('2026-11-08'),
+      })
+      .execute();
+    const trial = () =>
+      db
+        .insertInto('trials')
+        .values({
+          id: newId(),
+          owner_id: owner,
+          subscription_id: sub,
+          started_at: new Date('2026-11-01'),
+          ends_at: new Date('2026-11-08'),
+        })
+        .execute();
+    await trial();
+    await expect(trial()).rejects.toThrow(/trials_owner_id_key/);
   });
 });
 

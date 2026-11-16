@@ -7,12 +7,14 @@
  * and {@link BillingService.revoke} inside its own database transaction, so a
  * payment and the access it grants change together or not at all.
  */
+import { createHash } from 'node:crypto';
 import { type Database, newId, type SubscriptionStatus } from '@mathpath/db';
 import { type Kysely, sql, type Transaction } from 'kysely';
 import type { AuditService } from '../audit/audit.service';
 import type { Clock } from '../common/clock';
 import { ProblemException } from '../common/problem';
 import type { PaymentProvider } from './payment-provider';
+import type { PromoService } from './promo.service';
 import {
   type BillingRules,
   findPlan,
@@ -57,6 +59,9 @@ export interface OrderView {
   subscription?: SubscriptionView;
 }
 
+/** The plan code of a free trial's subscription. */
+export const TRIAL_PLAN = 'trial';
+
 const notFound = () => new ProblemException(404, 'ORDER_NOT_FOUND', 'This order does not exist.');
 
 export class BillingService {
@@ -68,18 +73,25 @@ export class BillingService {
     private readonly providers: ReadonlyMap<string, PaymentProvider>,
     /** Origins a return URL may point to (the web apps). */
     private readonly returnOrigins: readonly string[],
+    private readonly promo: PromoService,
   ) {}
 
   plans(): PlanView[] {
     return planViews(this.rules);
   }
 
+  /** The payment providers switched on, in the order checkout offers them. */
+  providerCodes(): string[] {
+    return (['payme', 'click'] as const).filter((code) => this.providers.has(code));
+  }
+
   /**
    * Creates an order with the plan price from config and returns the
    * provider's payment page. A repeated Idempotency-Key returns the same order.
    * @throws ProblemException 422 for an unknown plan, an unavailable
-   *   provider, a promo code (not offered yet) or a return URL off our origins;
-   *   404 when a student is not the parent's child; 409 for too many children.
+   *   provider, a promo code that does not apply or a return URL off our
+   *   origins; 404 when a student is not the parent's child; 409 for too many
+   *   children; 429 after too many promo code checks.
    */
   async checkout(ownerId: string, input: CheckoutInput, key: string): Promise<CheckoutView> {
     const existing = await this.db
@@ -104,31 +116,12 @@ export class BillingService {
         { errors: [{ field: 'provider', message: 'not enabled' }] },
       );
     }
-    if (input.promoCode) {
-      throw new ProblemException(422, 'PROMO_INVALID', 'This promo code is not valid.', {
-        errors: [{ field: 'promoCode', message: 'promo codes are not offered yet' }],
-      });
-    }
     const returnUrl = input.returnUrl ? this.checkReturnUrl(input.returnUrl) : null;
-    const studentIds = [...new Set(input.studentIds)];
-    if (studentIds.length > plan.maxStudents) {
-      throw new ProblemException(409, 'TOO_MANY_STUDENTS', 'This plan covers fewer children.', {
-        errors: [{ field: 'studentIds', message: `at most ${plan.maxStudents}` }],
-      });
-    }
-    const linked = await this.db
-      .selectFrom('parent_child_links as l')
-      .innerJoin('users as u', 'u.id', 'l.child_id')
-      .select('l.child_id')
-      .where('l.parent_id', '=', ownerId)
-      .where('l.child_id', 'in', studentIds)
-      .where('u.deleted_at', 'is', null)
-      .execute();
-    if (linked.length !== studentIds.length) {
-      throw new ProblemException(404, 'STUDENT_NOT_FOUND', 'This child is not in your family.', {
-        errors: [{ field: 'studentIds', message: 'not your child' }],
-      });
-    }
+    const studentIds = await this.ownChildren(ownerId, input.studentIds, plan.maxStudents);
+    const quote = input.promoCode
+      ? await this.promo.quote(ownerId, input.promoCode, plan.code, plan.priceTiyin)
+      : null;
+    const amountTiyin = quote?.amountTiyin ?? plan.priceTiyin;
 
     const now = this.clock.now();
     const id = newId();
@@ -140,7 +133,9 @@ export class BillingService {
         plan_code: plan.code,
         plan_interval: plan.interval,
         student_ids: studentIds,
-        amount_tiyin: plan.priceTiyin,
+        amount_tiyin: amountTiyin,
+        discount_tiyin: quote?.discountTiyin ?? 0,
+        promo_code_id: quote?.promoCodeId ?? null,
         provider: input.provider,
         idempotency_key: key,
         return_url: returnUrl,
@@ -166,7 +161,12 @@ export class BillingService {
         actorId: ownerId,
         targetType: 'order',
         targetId: id,
-        metadata: { planCode: plan.code, provider: input.provider, amountTiyin: plan.priceTiyin },
+        metadata: {
+          planCode: plan.code,
+          provider: input.provider,
+          amountTiyin,
+          ...(quote ? { promoCodeId: quote.promoCodeId, discountTiyin: quote.discountTiyin } : {}),
+        },
       });
     }
     return this.checkoutView(order, input.locale);
@@ -201,6 +201,115 @@ export class BillingService {
 
   subscriptions(ownerId: string): Promise<SubscriptionView[]> {
     return this.subscriptionViews(ownerId);
+  }
+
+  /** Whether this parent may still start the free trial. */
+  async trialAvailable(ownerId: string): Promise<boolean> {
+    if (this.rules.trialDays === 0) return false;
+    const used = await this.db
+      .selectFrom('trials')
+      .select('id')
+      .where('owner_id', '=', ownerId)
+      .executeTakeFirst();
+    return !used;
+  }
+
+  /**
+   * POST /trials: a free trial of every paid topic for some of the parent's
+   * children, once per account, per child and (when the app sends one) per
+   * device. It does not renew and needs no card.
+   * @throws ProblemException 422 TRIAL_UNAVAILABLE when trials are off;
+   *   409 TRIAL_USED, ALREADY_SUBSCRIBED or TOO_MANY_STUDENTS; 404 STUDENT_NOT_FOUND.
+   */
+  async startTrial(
+    ownerId: string,
+    input: { studentIds: string[]; deviceToken?: string },
+  ): Promise<SubscriptionView> {
+    const days = this.rules.trialDays;
+    if (days === 0) {
+      throw new ProblemException(422, 'TRIAL_UNAVAILABLE', 'Free trials are not offered.');
+    }
+    const maxStudents = Math.max(...this.rules.plans.map((p) => p.maxStudents));
+    const studentIds = await this.ownChildren(ownerId, input.studentIds, maxStudents);
+    const trialUsed = () =>
+      new ProblemException(409, 'TRIAL_USED', 'The free trial has already been used.');
+    const now = this.clock.now();
+    const deviceHash = input.deviceToken
+      ? createHash('sha256').update(input.deviceToken).digest('hex')
+      : null;
+
+    const id = await this.db.transaction().execute(async (trx) => {
+      const earlier = await trx
+        .selectFrom('subscriptions as s')
+        .innerJoin('subscription_members as m', 'm.subscription_id', 's.id')
+        .select(['s.plan_code', 's.status', 's.current_period_end'])
+        .where('m.student_id', 'in', studentIds)
+        .execute();
+      // A child gets one trial, even when a second parent asks for it.
+      if (earlier.some((s) => s.plan_code === TRIAL_PLAN)) throw trialUsed();
+      if (
+        earlier.some(
+          (s) => (s.status === 'active' || s.status === 'trialing') && s.current_period_end > now,
+        )
+      ) {
+        throw new ProblemException(
+          409,
+          'ALREADY_SUBSCRIBED',
+          'This child already has a subscription.',
+          { errors: [{ field: 'studentIds', message: 'already covered' }] },
+        );
+      }
+      const subscriptionId = newId();
+      const end = new Date(now.getTime() + days * 86_400_000);
+      await trx
+        .insertInto('subscriptions')
+        .values({
+          id: subscriptionId,
+          owner_id: ownerId,
+          plan_code: TRIAL_PLAN,
+          status: 'trialing',
+          seats: studentIds.length,
+          price_tiyin: 0,
+          current_period_start: now,
+          current_period_end: end,
+          // A trial never renews by itself.
+          cancel_at_period_end: true,
+          created_at: now,
+          updated_at: now,
+        })
+        .execute();
+      await trx
+        .insertInto('subscription_members')
+        .values(studentIds.map((student_id) => ({ subscription_id: subscriptionId, student_id })))
+        .execute();
+      // The unique keys on owner and device refuse a second trial, also under a race.
+      const inserted = await trx
+        .insertInto('trials')
+        .values({
+          id: newId(),
+          owner_id: ownerId,
+          device_hash: deviceHash,
+          subscription_id: subscriptionId,
+          started_at: now,
+          ends_at: end,
+        })
+        .onConflict((oc) => oc.doNothing())
+        .returning('id')
+        .executeTakeFirst();
+      if (!inserted) throw trialUsed();
+      await this.audit.record(
+        {
+          action: 'billing.trial_started',
+          actorId: ownerId,
+          targetType: 'subscription',
+          targetId: subscriptionId,
+          metadata: { students: studentIds.length, days },
+        },
+        trx,
+      );
+      return subscriptionId;
+    });
+    return (await this.subscriptionViews(ownerId, id))[0]!;
   }
 
   /**
@@ -288,6 +397,7 @@ export class BillingService {
       .set({ subscription_id: id })
       .where('id', '=', paymentId)
       .execute();
+    await this.promo.redeem(trx, order, paidAt);
     // Receipts, notifications and referral checks run from the outbox (ADR-0007).
     await trx
       .insertInto('outbox_events')
@@ -385,6 +495,37 @@ export class BillingService {
       }),
       expiresAt: order.expires_at.toISOString(),
     };
+  }
+
+  /**
+   * The distinct children, checked to be this parent's own and within the plan's seats.
+   * @throws ProblemException 409 TOO_MANY_STUDENTS, 404 STUDENT_NOT_FOUND.
+   */
+  private async ownChildren(
+    ownerId: string,
+    ids: string[],
+    maxStudents: number,
+  ): Promise<string[]> {
+    const studentIds = [...new Set(ids)];
+    if (studentIds.length > maxStudents) {
+      throw new ProblemException(409, 'TOO_MANY_STUDENTS', 'This plan covers fewer children.', {
+        errors: [{ field: 'studentIds', message: `at most ${maxStudents}` }],
+      });
+    }
+    const linked = await this.db
+      .selectFrom('parent_child_links as l')
+      .innerJoin('users as u', 'u.id', 'l.child_id')
+      .select('l.child_id')
+      .where('l.parent_id', '=', ownerId)
+      .where('l.child_id', 'in', studentIds)
+      .where('u.deleted_at', 'is', null)
+      .execute();
+    if (linked.length !== studentIds.length) {
+      throw new ProblemException(404, 'STUDENT_NOT_FOUND', 'This child is not in your family.', {
+        errors: [{ field: 'studentIds', message: 'not your child' }],
+      });
+    }
+    return studentIds;
   }
 
   /** A return URL must be on one of our own web origins (no open redirect). */

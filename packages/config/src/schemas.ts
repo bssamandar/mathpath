@@ -140,6 +140,7 @@ export const limitsSchema = z
         childPinFailures: window,
         childLoginFailuresPerFamily: window,
         accountLock: window,
+        promoChecksPerUser: window,
       })
       .strict(),
   })

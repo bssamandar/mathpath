@@ -1124,6 +1124,7 @@ paths:
       tags: [Billing]
       operationId: listPlans
       summary: Available plans and prices (from config).
+      description: Also lists the payment providers that are switched on and the trial length.
       security: []
       x-permission: public
       responses:
@@ -1133,17 +1134,24 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [items]
+                required: [items, providers, trialDays]
                 properties:
                   items:
                     type: array
                     items: { $ref: '#/components/schemas/Plan' }
+                  providers:
+                    type: array
+                    items: { $ref: '#/components/schemas/PaymentProviderCode' }
+                  trialDays: { type: integer, description: 0 when trials are off. }
 
   /promo-codes/validate:
     post:
       tags: [Billing]
       operationId: validatePromoCode
       summary: Check a promo code and preview the discounted price.
+      description: |
+        Codes are case-insensitive. Checks share a per-parent rate limit with
+        checkout (config `limits.rateLimits.promoChecksPerUser`).
       x-permission: billing:purchase
       requestBody:
         required: true
@@ -1168,6 +1176,11 @@ paths:
                   valid: { type: boolean }
                   amount: { $ref: '#/components/schemas/Money' }
                   discount: { $ref: '#/components/schemas/Money' }
+                  reason:
+                    type: string
+                    description: Present when not valid.
+                    enum: [not_found, not_started, expired, plan, used_up, already_used, too_large]
+        '422': { $ref: '#/components/responses/Unprocessable' }
         '429': { $ref: '#/components/responses/TooManyRequests' }
 
   /checkout:
@@ -1183,7 +1196,8 @@ paths:
         If a student is already covered, the new period starts when the current
         coverage ends. Errors: 400 IDEMPOTENCY_KEY_REQUIRED; 404 STUDENT_NOT_FOUND;
         409 TOO_MANY_STUDENTS; 422 PLAN_NOT_FOUND, PROVIDER_UNAVAILABLE,
-        PROMO_INVALID (promo codes arrive in step 6.5c), RETURN_URL_NOT_ALLOWED.
+        PROMO_INVALID (the field message is the reason, as in validate),
+        RETURN_URL_NOT_ALLOWED; 429 after too many promo code checks.
       x-permission: billing:purchase
       parameters:
         - name: Idempotency-Key
@@ -1273,11 +1287,12 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [items]
+                required: [items, trialAvailable]
                 properties:
                   items:
                     type: array
                     items: { $ref: '#/components/schemas/Subscription' }
+                  trialAvailable: { type: boolean }
 
   /subscriptions/{subscriptionId}/cancel:
     post:
@@ -1299,7 +1314,13 @@ paths:
     post:
       tags: [Billing]
       operationId: startTrial
-      summary: Start the free trial (one per account, device and card).
+      summary: Start the free trial (one per account, per child and per device).
+      description: |
+        Covers the chosen children for `trialDays` with plan code `trial`; it
+        never renews. Errors: 422 TRIAL_UNAVAILABLE (trials off); 409
+        TRIAL_USED (this account, child or device had one), ALREADY_SUBSCRIBED,
+        TOO_MANY_STUDENTS; 404 STUDENT_NOT_FOUND. The device check applies when
+        a device token is sent; one per card arrives with saved cards.
       x-permission: billing:purchase
       requestBody:
         required: true
@@ -1307,12 +1328,13 @@ paths:
           application/json:
             schema:
               type: object
-              required: [studentIds, deviceToken]
+              required: [studentIds]
               additionalProperties: false
               properties:
                 studentIds:
                   type: array
                   minItems: 1
+                  maxItems: 10
                   items: { $ref: '#/components/schemas/Id' }
                 deviceToken: { $ref: '#/components/schemas/DeviceToken' }
       responses:
@@ -1321,7 +1343,9 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Subscription' }
+        '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
 
   # ─────────────────────── Payment callbacks ───────────────────────
   /payments/payme:
@@ -2153,10 +2177,32 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
 
   /admin/promo-codes:
+    get:
+      tags: [Admin]
+      operationId: adminListPromoCodes
+      summary: Promo codes, newest first, with how many paid orders used each.
+      x-permission: admin:billing
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/PromoCode' }
     post:
       tags: [Admin]
       operationId: adminCreatePromoCode
       summary: Create a promo code.
+      description: |
+        The code is stored upper-case. `value` is a percentage (1–100) or an
+        amount in tiyin. A code never makes a plan free: if the discount would
+        reach the price, checkout refuses it. Errors: 409 PROMO_CODE_EXISTS;
+        422 PLAN_NOT_FOUND, VALIDATION_FAILED.
       x-permission: admin:billing
       requestBody:
         required: true
@@ -2178,8 +2224,29 @@ paths:
                 validFrom: { type: string, format: date-time }
                 validTo: { type: string, format: date-time }
       responses:
-        '201': { description: Created. }
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PromoCode' }
         '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /admin/promo-codes/{promoCodeId}/deactivate:
+    post:
+      tags: [Admin]
+      operationId: adminDeactivatePromoCode
+      summary: Stop a promo code; orders already paid keep their price.
+      x-permission: admin:billing
+      parameters:
+        - { name: promoCodeId, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } }
+      responses:
+        '200':
+          description: Deactivated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PromoCode' }
+        '404': { $ref: '#/components/responses/NotFound' }
 
   /admin/audit-log:
     get:
@@ -2903,6 +2970,23 @@ components:
         features:
           type: array
           items: { type: string }
+
+    PromoCode:
+      type: object
+      required:
+        [id, code, discountType, value, planCodes, maxRedemptions, perUserLimit, validFrom, validTo, isActive, redemptions]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        code: { type: string }
+        discountType: { type: string, enum: [percent, fixed] }
+        value: { type: integer, description: Percent, or tiyin for a fixed discount. }
+        planCodes: { type: [array, 'null'], items: { type: string } }
+        maxRedemptions: { type: [integer, 'null'] }
+        perUserLimit: { type: integer }
+        validFrom: { type: string, format: date-time }
+        validTo: { type: string, format: date-time }
+        isActive: { type: boolean }
+        redemptions: { type: integer, description: Paid orders that used the code. }
 
     Subscription:
       type: object
