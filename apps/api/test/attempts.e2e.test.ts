@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { DEMO_IDS, newId, type Role, seedDemoContent } from '@mathpath/db';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { SessionService } from '../src/identity/session.service';
@@ -157,11 +158,12 @@ describe('practice', () => {
     const me = await learner();
     const attempt = await start(me.auth, 'practice');
     const key = await keyOf(attempt.id, 1);
+    const requestKey = randomUUID();
     const send = () =>
       http()
         .post(`/api/v1/attempts/${attempt.id}/items/1/answer`)
         .set('Authorization', me.auth)
-        .set('Idempotency-Key', '7f3c2a9e-5b1d-4c8e-9a2f-1e6d3b4c5a70')
+        .set('Idempotency-Key', requestKey)
         .send({ response: wrongAnswer(key) })
         .expect(200);
     const one = await send();
