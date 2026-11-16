@@ -86,6 +86,9 @@ export const ROLE_PERMISSIONS: Readonly<Record<Role, readonly Permission[]>> = {
   admin: [
     'progress:read',
     'content:read',
+    // An admin can fix published lessons through a new version (C-18).
+    'content:author',
+    'content:review',
     'content:publish',
     'admin:users',
     'admin:risk',

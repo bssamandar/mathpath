@@ -25,3 +25,8 @@ media:
   keyRequestsPerMinute: 30 # per session, for GET /media/{id}/key
   maxImageBytes: 5242880 # 5 MiB
   maxSubtitleBytes: 1048576 # 1 MiB
+# Four-eyes rule (C-18): nobody approves a version they wrote. While the team
+# has a single admin, an admin may approve their own version so a typo can be
+# fixed; every such approval is marked `selfReview: true` in the audit log.
+# Set to false once a second person can review.
+adminSelfReview: true

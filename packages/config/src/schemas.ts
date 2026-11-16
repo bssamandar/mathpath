@@ -255,6 +255,8 @@ export const contentSchema = z
         maxSubtitleBytes: positiveInt,
       })
       .strict(),
+    // Four-eyes exception (C-18): an admin may approve their own version.
+    adminSelfReview: z.boolean(),
   })
   .strict()
   .refine((c) => c.uiLocales.includes(c.defaultLocale), {

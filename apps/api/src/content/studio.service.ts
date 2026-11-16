@@ -9,7 +9,9 @@
  * - One open version per topic (also a database index), copied from the latest.
  * - Saving needs the ETag from the last read, so two editors cannot overwrite
  *   each other unseen (412 on a stale save).
- * - A reviewer may not review their own version (four-eyes rule, C-18).
+ * - A reviewer may not review their own version (four-eyes rule, C-18). The
+ *   one exception is an admin while `adminSelfReview` is on (a one-person
+ *   team); such an approval is marked `selfReview` in the audit log.
  * - Publishing archives the previous published version; the database refuses
  *   any later change to either (migration 2026111601).
  */
@@ -264,21 +266,25 @@ export class StudioService {
   ): Promise<VersionSummary> {
     const row = await this.find(versionId);
     if (row.status !== 'in_review') throw wrongState(row.status, 'reviewed');
-    if (row.author_id === actor.userId) {
+    const selfReview = row.author_id === actor.userId;
+    if (selfReview && !(this.rules.adminSelfReview && actor.roles.includes('admin'))) {
       throw new ProblemException(403, 'FOUR_EYES', 'You cannot review a version you wrote.');
     }
-    return this.transition(actor, row, decision, `content.review_${decision}`, async (trx) => {
-      await trx
-        .insertInto('content_reviews')
-        .values({
-          id: newId(),
-          entity_type: 'topic_version',
-          entity_id: versionId,
-          reviewer_id: actor.userId,
-          decision,
-          comments: JSON.stringify(comments),
-        })
-        .execute();
+    return this.transition(actor, row, decision, `content.review_${decision}`, {
+      metadata: { selfReview },
+      then: async (trx) => {
+        await trx
+          .insertInto('content_reviews')
+          .values({
+            id: newId(),
+            entity_type: 'topic_version',
+            entity_id: versionId,
+            reviewer_id: actor.userId,
+            decision,
+            comments: JSON.stringify(comments),
+          })
+          .execute();
+      },
     });
   }
 
@@ -287,12 +293,9 @@ export class StudioService {
     const row = await this.find(versionId);
     if (row.status !== 'approved') throw wrongState(row.status, 'published');
     const now = this.clock.now();
-    return this.transition(
-      actor,
-      row,
-      'published',
-      'content.publish',
-      async (trx) => {
+    return this.transition(actor, row, 'published', 'content.publish', {
+      publishedAt: now,
+      then: async (trx) => {
         const topic = await trx
           .selectFrom('topics')
           .select('published_version_id')
@@ -312,23 +315,26 @@ export class StudioService {
           .where('id', '=', row.topic_id)
           .execute();
       },
-      now,
-    );
+    });
   }
 
   /**
    * Moves a version to `to` only if it is still in the state it was read in,
    * so two reviewers clicking at once cannot both act; then runs `then` in
-   * the same transaction.
+   * the same transaction. `metadata` is added to the audit entry.
    */
   private async transition(
     actor: StudioActor,
     row: VersionRow,
     to: VersionStatus,
     action: string,
-    then?: (trx: Kysely<Database>) => Promise<void>,
-    publishedAt?: Date,
+    options: {
+      then?: (trx: Kysely<Database>) => Promise<void>;
+      publishedAt?: Date;
+      metadata?: Record<string, unknown>;
+    } = {},
   ): Promise<VersionSummary> {
+    const { then, publishedAt, metadata } = options;
     await this.db.transaction().execute(async (trx) => {
       const result = await trx
         .updateTable('topic_versions')
@@ -349,6 +355,7 @@ export class StudioService {
             topicId: row.topic_id,
             versionNo: row.version_no,
             contentHash: row.content_hash,
+            ...metadata,
           },
         },
         trx,
