@@ -1478,6 +1478,19 @@ paths:
               schema: { $ref: '#/components/schemas/WeeklyReport' }
 
   # ──────────────────────────── Studio ────────────────────────────
+  /studio/tree:
+    get:
+      tags: [Studio]
+      operationId: getStudioTree
+      summary: Tracks, courses, chapters and topics with each topic's newest version, drafts included.
+      x-permission: content:author
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StudioTree' }
+
   /studio/topics/{topicId}/versions:
     parameters:
       - $ref: '#/components/parameters/TopicId'
@@ -2781,6 +2794,61 @@ components:
           type: array
           items: { $ref: '#/components/schemas/LocalizedText' }
         solution: { $ref: '#/components/schemas/LocalizedText' }
+
+    StudioTree:
+      type: object
+      required: [tracks]
+      properties:
+        tracks:
+          type: array
+          items:
+            type: object
+            required: [id, slug, title, courses]
+            properties:
+              id: { $ref: '#/components/schemas/Id' }
+              slug: { type: string }
+              title: { $ref: '#/components/schemas/LocalizedText' }
+              courses:
+                type: array
+                items:
+                  type: object
+                  required: [id, slug, title, grade, status, chapters]
+                  properties:
+                    id: { $ref: '#/components/schemas/Id' }
+                    slug: { type: string }
+                    title: { $ref: '#/components/schemas/LocalizedText' }
+                    grade: { type: [integer, 'null'] }
+                    status: { type: string, enum: [draft, published, archived] }
+                    chapters:
+                      type: array
+                      items:
+                        type: object
+                        required: [id, slug, title, status, topics]
+                        properties:
+                          id: { $ref: '#/components/schemas/Id' }
+                          slug: { type: string }
+                          title: { $ref: '#/components/schemas/LocalizedText' }
+                          status: { type: string, enum: [draft, published, archived] }
+                          topics:
+                            type: array
+                            items:
+                              type: object
+                              required: [id, slug, isFree, publishedVersionId, title, latest]
+                              properties:
+                                id: { $ref: '#/components/schemas/Id' }
+                                slug: { type: string }
+                                isFree: { type: boolean }
+                                publishedVersionId: { oneOf: [{ $ref: '#/components/schemas/Id' }, { type: 'null' }] }
+                                title: { $ref: '#/components/schemas/LocalizedText' }
+                                latest:
+                                  oneOf:
+                                    - type: 'null'
+                                    - type: object
+                                      required: [id, versionNo, status]
+                                      properties:
+                                        id: { $ref: '#/components/schemas/Id' }
+                                        versionNo: { type: integer }
+                                        status: { $ref: '#/components/schemas/ContentStatus' }
 
     MediaAsset:
       type: object
