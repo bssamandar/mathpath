@@ -356,6 +356,12 @@ paths:
       tags: [Auth]
       operationId: enrolTotp
       summary: Start TOTP enrolment; returns a provisioning URI.
+      description: |
+        Any signed-in user may enrol (a staff role is granted only to an account
+        with 2FA). A pending enrolment expires after `mfa.enrolmentTtlMinutes`.
+        When the account already has a confirmed authenticator, the session must
+        have passed 2FA first (403 `MFA_REQUIRED`), so a password alone cannot
+        replace it. The secret is stored encrypted (AES-256-GCM).
       x-permission: authenticated
       responses:
         '200':
@@ -368,25 +374,39 @@ paths:
                 properties:
                   factorId: { $ref: '#/components/schemas/Id' }
                   otpauthUri: { type: string }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
 
   /auth/mfa/verify:
     post:
       tags: [Auth]
       operationId: verifyMfa
       summary: Confirm enrolment or complete an MFA-pending login.
+      description: |
+        Send `factorId` + `code` to confirm a new authenticator, `code` alone to
+        pass 2FA with the confirmed one, or `recoveryCode` alone. A TOTP code is
+        accepted once (its time step is stored); each recovery code works once.
+        Wrong codes return 401 `MFA_CODE_INVALID` and are limited per user
+        (`mfa.verifyFailures`, then 429). Success marks the session verified and
+        issues new tokens.
       x-permission: authenticated
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              required: [code]
-              additionalProperties: false
-              properties:
-                factorId: { $ref: '#/components/schemas/Id' }
-                code: { type: string, pattern: '^[0-9]{6}$' }
-                recoveryCode: { type: string, maxLength: 32 }
+              oneOf:
+                - type: object
+                  required: [code]
+                  additionalProperties: false
+                  properties:
+                    factorId: { $ref: '#/components/schemas/Id' }
+                    code: { type: string, pattern: '^[0-9]{6}$' }
+                - type: object
+                  required: [recoveryCode]
+                  additionalProperties: false
+                  properties:
+                    recoveryCode: { type: string, minLength: 10, maxLength: 32 }
       responses:
         '200':
           description: MFA satisfied. Recovery codes are returned once, on first enrolment.
@@ -394,6 +414,7 @@ paths:
             application/json:
               schema:
                 type: object
+                required: [session]
                 properties:
                   session: { $ref: '#/components/schemas/SessionInfo' }
                   recoveryCodes:
