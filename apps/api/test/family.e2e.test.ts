@@ -148,6 +148,31 @@ describe('adding a child (C-30)', () => {
     expect(t.sms.sent.some((m) => m.phone === OTHER_PHONE)).toBe(false);
   });
 
+  it('sends a confirmation code to the account’s own number when no phone is given', async () => {
+    const parent = await signUpParent();
+    t.clock.advance(5 * MINUTE);
+    const res = await http()
+      .post('/api/v1/auth/otp')
+      .set('Authorization', `Bearer ${parent.token}`)
+      .send({ purpose: 'confirm_action' })
+      .expect(202);
+    const child = await addChild(parent, {
+      firstName: 'Aziz',
+      nickname: 'Aziz_7',
+      grade: 5,
+      pin: '2580',
+      consent: {
+        policyVersion: '2026-11',
+        scopes: ['learning'],
+        otpChallengeId: res.body.challengeId,
+        otpCode: t.sms.lastCode(parent.phone),
+      },
+    });
+    expect(child.status).toBe(201);
+    // Every other purpose still needs a phone.
+    await http().post('/api/v1/auth/otp').send({ purpose: 'login' }).expect(400);
+  });
+
   it('asks anonymous callers to sign in before requesting a confirmation code', async () => {
     const res = await http()
       .post('/api/v1/auth/otp')

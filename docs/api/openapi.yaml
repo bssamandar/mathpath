@@ -100,10 +100,12 @@ paths:
           application/json:
             schema:
               type: object
-              required: [phone, purpose]
+              required: [purpose]
               additionalProperties: false
               properties:
-                phone: { $ref: '#/components/schemas/PhoneE164' }
+                phone:
+                  $ref: '#/components/schemas/PhoneE164'
+                  description: Required, except for `confirm_action`, where the code goes to the account's own number.
                 purpose:
                   type: string
                   enum: [signup, login, confirm_action, reset_password, change_phone]
@@ -1607,13 +1609,24 @@ paths:
       x-permission: progress:read
       parameters:
         - $ref: '#/components/parameters/StudentId'
-        - { name: weekStart, in: query, required: false, schema: { type: string, format: date } }
+        - name: weekStart
+          in: query
+          required: false
+          description: The Monday of a past or this week; defaults to this week.
+          schema: { type: string, format: date }
+        - { name: locale, in: query, required: false, schema: { $ref: '#/components/schemas/Locale' }, description: Language of topic titles. }
       responses:
         '200':
           description: OK
           content:
             application/json:
               schema: { $ref: '#/components/schemas/WeeklyReport' }
+        '404':
+          description: '`STUDENT_NOT_FOUND`: not the caller or one of their children.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
 
   # ──────────────────────────── Studio ────────────────────────────
   /studio/tree:
@@ -3113,24 +3126,50 @@ components:
 
     WeeklyReport:
       type: object
-      required: [studentId, weekStart, minutesActive, topicsMastered, highlights, concerns]
+      description: |
+        A Tashkent week (Monday to Sunday). Facts and stable codes only: the app
+        writes the summary in the reader's language. Minutes are estimated from
+        questions (showing to answering, at most 5 minutes each); lesson videos
+        are not counted yet.
+      required:
+        [studentId, weekStart, weekEnd, minutesByDay, minutesActive, minutesLastWeek, daysActive,
+         questionsAnswered, rightFirstTime, xpEarned, streak, topicsMastered, concerns]
       properties:
         studentId: { $ref: '#/components/schemas/Id' }
         weekStart: { type: string, format: date }
+        weekEnd: { type: string, format: date }
+        minutesByDay:
+          type: array
+          minItems: 7
+          maxItems: 7
+          description: Monday to Sunday.
+          items: { type: integer }
         minutesActive: { type: integer }
+        minutesLastWeek: { type: integer }
         daysActive: { type: integer }
+        questionsAnswered: { type: integer }
+        rightFirstTime: { type: integer, description: Answered right on the first try. }
+        xpEarned: { type: integer }
+        streak: { type: integer, description: The current streak; 0 in a past week's report. }
         topicsMastered:
           type: array
-          items: { type: string }
-        highlights:
-          type: array
-          items: { type: string }
+          items:
+            type: object
+            required: [topicId, title]
+            properties:
+              topicId: { $ref: '#/components/schemas/Id' }
+              title: { type: string }
         concerns:
           type: array
-          items: { type: string }
-        suggestedNextSteps:
-          type: array
-          items: { type: string }
+          maxItems: 3
+          description: What needs attention, most useful first.
+          items:
+            type: object
+            required: [topicId, title, reason]
+            properties:
+              topicId: { $ref: '#/components/schemas/Id' }
+              title: { type: string }
+              reason: { type: string, enum: [gap_found, mastery_not_passed, review_due] }
 
     ContentStatus:
       type: string
