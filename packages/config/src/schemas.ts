@@ -115,6 +115,22 @@ export const gamificationSchema = z
       .strict(),
     levels: z.object({ levelBase: positiveInt, levelExponent: z.number().min(1).max(3) }).strict(),
     streak: z.object({ freezeEveryDays: positiveInt, maxFreezes: nonNegativeInt }).strict(),
+    // Everyone gets the same quests each day; progress comes from server events only.
+    quests: z
+      .array(
+        z
+          .object({
+            code: z.string().regex(/^[a-z0-9_]{2,32}$/),
+            metric: z.enum(['first_try_correct', 'xp', 'sets_finished']),
+            target: positiveInt,
+          })
+          .strict(),
+      )
+      .max(5)
+      .refine(
+        (quests) => new Set(quests.map((q) => q.code)).size === quests.length,
+        'quest codes must be unique',
+      ),
     leagues: z
       .object({ size: positiveInt, promoteTop: nonNegativeInt, demoteBottom: nonNegativeInt })
       .strict()

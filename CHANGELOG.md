@@ -157,6 +157,13 @@ project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Web pricing, checkout (children, promo code, Payme or Click), payment return
   page that waits for the provider, and a "Plan and payment" page with turning
   off renewal; in Uzbek, Russian and English. Children show their current plan.
+- Gamification: XP only from server results (a practice answer right on the
+  first try, a passed mastery test once per topic, a passed review, a finished
+  daily quest), paid once per source through an idempotent ledger and capped
+  per Tashkent day for practice and review; levels; daily streaks with earned
+  freezes; badges; three daily quests from config. `GET /me/gamification`; the
+  answer and the test result return what they earned. The student home shows
+  level, streak, quests and badges, and answers show "+10 XP".
 - Errors are returned as RFC 9457 problem details with a stable `code` and request ID.
 - CI (format, lint, typecheck, tests with an 80% coverage gate, build) and security
   scanning (gitleaks, pnpm audit, OSV-Scanner, Semgrep, CodeQL); Renovate.

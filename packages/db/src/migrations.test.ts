@@ -55,6 +55,10 @@ const expectedTables: TableName[] = [
   'promo_codes',
   'promo_redemptions',
   'trials',
+  'xp_ledger',
+  'user_stats',
+  'user_badges',
+  'user_quests',
   'subscriptions',
   'subscription_members',
   'question_templates',
@@ -602,6 +606,47 @@ describe('promo code and trial constraints', () => {
         .execute();
     await trial();
     await expect(trial()).rejects.toThrow(/trials_owner_id_key/);
+  });
+});
+
+describe('gamification constraints', () => {
+  it('never pays XP twice for the same thing', async () => {
+    const user = await insertUser({ phone_e164: null });
+    const award = () =>
+      db
+        .insertInto('xp_ledger')
+        .values({
+          id: newId(),
+          user_id: user,
+          amount: 10,
+          reason: 'first_try_correct',
+          source_type: 'attempt_item',
+          source_id: 'item-1',
+          day: '2026-11-19',
+        })
+        .execute();
+    await award();
+    await expect(award()).rejects.toThrow(/xp_ledger_user_id_reason_source_type_source_id_key/);
+  });
+
+  it('marks a quest complete exactly when its target is reached', async () => {
+    const user = await insertUser({ phone_e164: null });
+    const quest = (progress: number, done: boolean) =>
+      db
+        .insertInto('user_quests')
+        .values({
+          user_id: user,
+          day: '2026-11-19',
+          code: `q${progress}${done}`,
+          progress,
+          target: 5,
+          completed_at: done ? new Date() : null,
+        })
+        .execute();
+    await quest(3, false);
+    await quest(5, true);
+    await expect(quest(5, false)).rejects.toThrow(/check/);
+    await expect(quest(2, true)).rejects.toThrow(/check/);
   });
 });
 

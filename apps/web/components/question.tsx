@@ -2,6 +2,7 @@
 
 import type { Feedback, PadKey, QuestionInstance } from '../lib/practice';
 import { pressKey } from '../lib/practice';
+import { RewardLine } from './gamification';
 import { useI18n } from './i18n-provider';
 import { MathText } from './math-text';
 
@@ -127,6 +128,7 @@ export function FeedbackPanel({ feedback }: { feedback: Feedback }) {
     return (
       <div className="feedback success" role="status">
         <p className="feedback-title">✓ {t('question.correct')}</p>
+        <RewardLine reward={feedback.reward} />
       </div>
     );
   }

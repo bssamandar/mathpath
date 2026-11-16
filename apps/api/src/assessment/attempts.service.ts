@@ -31,6 +31,7 @@ import type { Clock } from '../common/clock';
 import { ProblemException } from '../common/problem';
 import type { CatalogueService, Entitlements } from '../content/catalogue.service';
 import { pickText } from '../content/documents';
+import type { GamificationService, XpEarned } from '../gamification/gamification.service';
 import type { LearningService, Recommendation } from '../learning/learning.service';
 import { planItems, practiceStep, tashkentDay } from './policy';
 
@@ -63,6 +64,8 @@ export interface Feedback {
   solution?: string | null;
   /** The right answer, once the item is finished without a right answer. */
   correctAnswer?: string | null;
+  /** Practice only: XP, badges and quests this answer earned. */
+  reward?: XpEarned;
 }
 
 export interface QuestionInstanceView {
@@ -92,6 +95,8 @@ export interface AttemptResultView {
     solution: string | null;
   }[];
   recommendation: Recommendation & { topicTitle: string | null };
+  /** XP, badges and quests that submitting earned. */
+  reward: XpEarned;
 }
 
 export interface TopicAssessmentStatus {
@@ -121,6 +126,7 @@ export class AttemptsService {
     private readonly clock: Clock,
     private readonly rules: AppConfig,
     private readonly learning: LearningService,
+    private readonly gamification: GamificationService,
   ) {}
 
   /**
@@ -377,6 +383,12 @@ export class AttemptsService {
         feedback.hints.length,
         this.rules.learning.practice,
       );
+      const reward = await this.gamification.practiceAnswered(trx, {
+        userId,
+        itemId: item.id,
+        correct: mark.correct,
+        firstTry: tries === 1,
+      });
       const stored: StoredFeedback = {
         accepted: true,
         correct: mark.correct,
@@ -384,6 +396,7 @@ export class AttemptsService {
         triesLeft: step.triesLeft,
         hintIndex: step.hintIndex,
         showSolution: step.showSolution,
+        reward,
       };
       await trx
         .updateTable('attempt_items')
@@ -448,6 +461,13 @@ export class AttemptsService {
             passed,
           })
         : { action: 'continue' as const, topicId: null };
+      const reward = await this.gamification.attemptSubmitted(trx, {
+        userId,
+        attemptId,
+        topicId: attempt.topic_id,
+        type: attempt.type,
+        passed,
+      });
       await trx
         .updateTable('attempts')
         .set({
@@ -457,6 +477,7 @@ export class AttemptsService {
           max_score: items.length,
           passed,
           recommendation: JSON.stringify(recommendation),
+          reward: JSON.stringify(reward),
         })
         .where('id', '=', attemptId)
         .execute();
@@ -573,6 +594,7 @@ export class AttemptsService {
         },
         locale,
       ),
+      reward: (attempt.reward as XpEarned | null) ?? { xp: 0, badges: [], questsCompleted: [] },
     };
   }
 
@@ -606,6 +628,7 @@ export class AttemptsService {
         'a.max_score',
         'a.passed',
         'a.recommendation',
+        'a.reward',
       ])
       .where('a.id', '=', attemptId)
       .where('a.user_id', '=', userId);
@@ -819,6 +842,7 @@ interface StoredFeedback {
   triesLeft?: number;
   hintIndex?: number | null;
   showSolution?: boolean;
+  reward?: XpEarned;
 }
 
 // 402, as the contract's PaymentRequired response: a paid plan lifts the limit.

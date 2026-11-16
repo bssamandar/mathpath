@@ -14,6 +14,13 @@ streak:
   # Freezes are earned, never bought; one is earned per this many streak days.
   freezeEveryDays: 7
   maxFreezes: 2
+# Daily quests, the same for every learner. Metrics: first_try_correct (right
+# on the first try), xp (learning XP, not quest XP), sets_finished (practice
+# sets and tests submitted).
+quests:
+  - { code: correct_5, metric: first_try_correct, target: 5 }
+  - { code: xp_50, metric: xp, target: 50 }
+  - { code: finish_set, metric: sets_finished, target: 1 }
 leagues:
   size: 30
   promoteTop: 5

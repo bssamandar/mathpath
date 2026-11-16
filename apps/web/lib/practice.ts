@@ -3,6 +3,7 @@
  * The shapes follow docs/api/openapi.yaml (Attempt, QuestionInstance,
  * AnswerFeedback, AttemptResult, TopicAssessmentStatus).
  */
+import type { Reward } from './gamification';
 
 export interface Attempt {
   id: string;
@@ -23,6 +24,8 @@ export interface Feedback {
   hint?: string | null;
   solution?: string | null;
   correctAnswer?: string | null;
+  /** Practice only: XP, badges and quests this answer earned. */
+  reward?: Reward;
 }
 
 export interface QuestionInstance {
@@ -48,6 +51,7 @@ export interface AttemptResult {
     solution: string | null;
   }[];
   recommendation?: Recommendation | null;
+  reward?: Reward;
 }
 
 /** The gap router's next step (docs/api/openapi.yaml, AttemptResult.recommendation). */
