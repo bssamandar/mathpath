@@ -514,6 +514,8 @@ export interface PaymentsTable {
   /** The provider's cancel reason code (Payme: 1–5, 10). */
   cancel_reason: number | null;
   fiscal_receipt: Json<Record<string, unknown>> | null;
+  /** A number from a sequence, for providers that want an integer ID (Click). */
+  merchant_ref: ColumnType<string, never, never>;
 }
 
 export interface PaymentCallbacksTable {

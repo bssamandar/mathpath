@@ -83,6 +83,15 @@ const envSchema = z
     PAYME_KEY: optionalSecret(z.string().min(8)),
     // checkout.test.paycom.uz on staging, checkout.paycom.uz in production.
     PAYME_CHECKOUT_URL: z.url().default('https://checkout.test.paycom.uz'),
+    // Click Shop API: the service and merchant IDs and the service's secret key.
+    CLICK_SERVICE_ID: optionalSecret(
+      z.string().regex(/^\d{1,10}$/, 'expected a numeric service ID'),
+    ),
+    CLICK_MERCHANT_ID: optionalSecret(
+      z.string().regex(/^\d{1,10}$/, 'expected a numeric merchant ID'),
+    ),
+    CLICK_SECRET_KEY: optionalSecret(z.string().min(8)),
+    CLICK_CHECKOUT_URL: z.url().default('https://my.click.uz/services/pay'),
   })
   // Storage and the media key secret, shared with the worker.
   .extend(mediaEnvSchema.shape)
@@ -95,6 +104,11 @@ const envSchema = z
     if (env.PAYMENT_PROVIDERS.includes('payme')) {
       for (const key of ['PAYME_MERCHANT_ID', 'PAYME_KEY'] as const) {
         if (!env[key]) ctx.addIssue({ code: 'custom', path: [key], message: 'required for Payme' });
+      }
+    }
+    if (env.PAYMENT_PROVIDERS.includes('click')) {
+      for (const key of ['CLICK_SERVICE_ID', 'CLICK_MERCHANT_ID', 'CLICK_SECRET_KEY'] as const) {
+        if (!env[key]) ctx.addIssue({ code: 'custom', path: [key], message: 'required for Click' });
       }
     }
     if (env.CAPTCHA_PROVIDER === 'turnstile' && !env.TURNSTILE_SECRET_KEY) {

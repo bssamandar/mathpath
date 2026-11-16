@@ -629,6 +629,10 @@ for N days (config).
 > `bigint` tiyin with positive checks. `payment_methods`, `refunds`,
 > `promo_codes`, `promo_redemptions`, `trials` and `referrals` come with saved
 > cards, admin refunds and step 6.5c.
+>
+> Step 6.5b (migration `2026111802_payment_refs`) adds `payments.merchant_ref`,
+> a unique `bigint` identity: Click wants an integer for our side of a payment
+> (`merchant_prepare_id`, `merchant_confirm_id`), and payment IDs are UUIDs.
 
 ### 3.11 `classroom`
 

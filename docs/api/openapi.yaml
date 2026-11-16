@@ -1362,8 +1362,17 @@ paths:
       operationId: clickCallback
       summary: Click merchant callbacks (prepare and complete).
       description: |
-        Called by Click only. The `sign_string` is recomputed and compared in
-        constant time before the body is trusted. Idempotent by Click transaction ID.
+        Called by Click only (Shop API). The `sign_string` (MD5 of the call's
+        fields and the service's secret key) is recomputed and compared in
+        constant time before the body is trusted. Idempotent by Click transaction
+        ID: a repeated Prepare returns the same `merchant_prepare_id`, and a
+        repeated Complete for a paid transaction returns success. Answers 404
+        PROVIDER_UNAVAILABLE when Click is not listed in PAYMENT_PROVIDERS.
+        Error codes in the body: 0 success, -1 signature check failed, -2 wrong
+        amount, -3 action does not match the URL, -4 already paid, -5 order not
+        found, -6 transaction not found, -8 bad request (including another
+        service ID), -9 transaction cancelled (failed charge, expired order or
+        an attempt replaced by a newer one).
       security: []
       x-permission: provider:click
       parameters:

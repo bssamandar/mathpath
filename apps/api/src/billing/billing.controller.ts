@@ -23,6 +23,7 @@ import type { AuthedRequest } from '../identity/auth.guard';
 import { Access } from '../identity/permissions';
 import { BillingService } from './billing.service';
 import { PAYMENT_PROVIDERS, type PaymentProvider } from './payment-provider';
+import type { ClickProvider } from './click/click';
 import type { PaymeProvider } from './payme/payme';
 
 const id = z.uuid();
@@ -118,5 +119,21 @@ export class PaymentCallbacksController {
     const payme = this.providers.get('payme') as PaymeProvider | undefined;
     if (!payme) throw new ProblemException(404, 'PROVIDER_UNAVAILABLE', 'Payme is not enabled.');
     return payme.handle(typeof authorization === 'string' ? authorization : undefined, body);
+  }
+
+  /**
+   * POST /payments/click/{prepare|complete}: Click Shop API (form-encoded,
+   * always HTTP 200 with Click's error codes).
+   */
+  @Post('click/:stage')
+  @HttpCode(200)
+  @Access('provider:click')
+  async clickCallback(@Param('stage') stage: unknown, @Body() body: unknown) {
+    const click = this.providers.get('click') as ClickProvider | undefined;
+    if (!click) throw new ProblemException(404, 'PROVIDER_UNAVAILABLE', 'Click is not enabled.');
+    if (stage !== 'prepare' && stage !== 'complete') {
+      throw new ProblemException(404, 'NOT_FOUND', 'Unknown Click stage.');
+    }
+    return click.handle(stage, body);
   }
 }
