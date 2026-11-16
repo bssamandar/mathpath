@@ -61,6 +61,11 @@ describe('AuthKeys', () => {
     const tampered = Buffer.from(sealed);
     tampered[tampered.length - 1]! ^= 1;
     expect(() => keys.open('mfa-secret', tampered)).toThrow();
+    // A value cut short (so its tag would be shorter) is refused.
+    expect(() => keys.open('mfa-secret', sealed.subarray(0, 20))).toThrow();
+    expect(() =>
+      keys.open('mfa-secret', Buffer.concat([sealed.subarray(0, 24), sealed.subarray(28)])),
+    ).toThrow();
     const other = AuthKeys.fromEnv(parseEnv({ ...base, AUTH_HMAC_SECRET: 't'.repeat(32) }));
     expect(() => other.open('mfa-secret', sealed)).toThrow();
   });
