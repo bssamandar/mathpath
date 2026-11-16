@@ -31,10 +31,11 @@ import type { Clock } from '../common/clock';
 import { ProblemException } from '../common/problem';
 import type { CatalogueService, Entitlements } from '../content/catalogue.service';
 import { pickText } from '../content/documents';
+import type { LearningService, Recommendation } from '../learning/learning.service';
 import { planItems, practiceStep, tashkentDay } from './policy';
 
-/** Kinds of attempt this step can run. The others arrive with adaptivity and exams. */
-export const AVAILABLE_TYPES = ['practice', 'mastery'] as const;
+/** Kinds of attempt that run now. Diagnostics and exams arrive later. */
+export const AVAILABLE_TYPES = ['practice', 'mastery', 'review'] as const;
 type AvailableType = (typeof AVAILABLE_TYPES)[number];
 
 export interface AttemptView {
@@ -90,7 +91,7 @@ export interface AttemptResultView {
     correctAnswer: string;
     solution: string | null;
   }[];
-  recommendation: { action: 'continue' | 'retry_practice'; topicId: string | null };
+  recommendation: Recommendation & { topicTitle: string | null };
 }
 
 export interface TopicAssessmentStatus {
@@ -119,6 +120,7 @@ export class AttemptsService {
     private readonly entitlements: Entitlements,
     private readonly clock: Clock,
     private readonly rules: AppConfig,
+    private readonly learning: LearningService,
   ) {}
 
   /**
@@ -137,7 +139,7 @@ export class AttemptsService {
       throw new ProblemException(
         422,
         'ASSESSMENT_UNAVAILABLE',
-        'Only topic practice and mastery tests are available yet.',
+        'Only topic practice, mastery tests and reviews are available yet.',
       );
     }
     const type = input.type as AvailableType;
@@ -162,7 +164,19 @@ export class AttemptsService {
     if (templates.length === 0) {
       throw new ProblemException(409, 'NO_QUESTIONS', 'This topic has no questions yet.');
     }
-    if (type === 'mastery') {
+    let reviewKind: Awaited<ReturnType<LearningService['reviewKind']>> = null;
+    if (type === 'review') {
+      // A short check on a prerequisite the gap router chose, or a spaced
+      // review of a topic mastered before (ADR-0006).
+      reviewKind = await this.learning.reviewKind(userId, topicId);
+      if (!reviewKind) {
+        throw new ProblemException(
+          409,
+          'REVIEW_NOT_AVAILABLE',
+          'Reviews open once a topic is mastered or the learning path asks for one.',
+        );
+      }
+    } else if (type === 'mastery') {
       const correct = await this.practiceCorrect(userId, topicId);
       if (correct < this.rules.learning.practice.minCorrectBeforeMasteryTest) {
         throw new ProblemException(
@@ -178,7 +192,11 @@ export class AttemptsService {
     const count =
       type === 'practice'
         ? this.rules.learning.practice.itemsPerSet
-        : this.rules.learning.masteryTest.items;
+        : type === 'mastery'
+          ? this.rules.learning.masteryTest.items
+          : reviewKind === 'gap_check'
+            ? this.rules.learning.gapRouting.miniCheckItems
+            : this.rules.learning.review.items;
     const random = seededRandom(randomBytes(16).toString('hex'));
     const items = this.generateItems(planItems(templates, count, random.shuffle), templates);
     if (items.length === 0) {
@@ -419,6 +437,17 @@ export class AttemptsService {
         attempt.type === 'practice'
           ? null
           : items.length > 0 && score / items.length >= this.rules.learning.masteryThreshold;
+      const recommendation = attempt.topic_id
+        ? await this.learning.afterSubmit(trx, {
+            attemptId,
+            userId,
+            topicId: attempt.topic_id,
+            type: attempt.type,
+            score,
+            maxScore: items.length,
+            passed,
+          })
+        : { action: 'continue' as const, topicId: null };
       await trx
         .updateTable('attempts')
         .set({
@@ -427,6 +456,7 @@ export class AttemptsService {
           score,
           max_score: items.length,
           passed,
+          recommendation: JSON.stringify(recommendation),
         })
         .where('id', '=', attemptId)
         .execute();
@@ -536,13 +566,25 @@ export class AttemptsService {
           solution: solution ? this.text(solution, locale) : null,
         };
       }),
-      // The gap router (step 6.4c) replaces this simple rule.
-      recommendation: {
-        action:
-          attempt.type === 'mastery' && attempt.passed === false ? 'retry_practice' : 'continue',
-        topicId: attempt.topic_id,
-      },
+      recommendation: await this.withTitle(
+        (attempt.recommendation as Recommendation | null) ?? {
+          action: 'continue',
+          topicId: attempt.topic_id,
+        },
+        locale,
+      ),
     };
+  }
+
+  private async withTitle(rec: Recommendation, locale: string) {
+    if (!rec.topicId) return { ...rec, topicTitle: null };
+    const topic = await this.db
+      .selectFrom('topics as t')
+      .innerJoin('topic_versions as v', 'v.id', 't.published_version_id')
+      .select('v.title')
+      .where('t.id', '=', rec.topicId)
+      .executeTakeFirst();
+    return { ...rec, topicTitle: topic ? this.text(topic.title, locale) : null };
   }
 
   private async attemptRow(
@@ -563,6 +605,7 @@ export class AttemptsService {
         'a.score',
         'a.max_score',
         'a.passed',
+        'a.recommendation',
       ])
       .where('a.id', '=', attemptId)
       .where('a.user_id', '=', userId);

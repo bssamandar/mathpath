@@ -38,7 +38,15 @@ export default function CoursePage({ params }: { params: Promise<{ courseId: str
                 ) : (
                   <Link className="card" href={`/learn/${topic.id}?course=${courseId}`}>
                     <span>{topic.title}</span>
-                    {topic.isFree && <span className="tag">{t('course.free')}</span>}
+                    {topic.state === 'mastered' ? (
+                      <span className="tag">⭐ {t('course.mastered')}</span>
+                    ) : topic.state === 'needs_review' ? (
+                      <span className="tag needs_review">{t('course.needsReview')}</span>
+                    ) : topic.state === 'learning' ? (
+                      <span className="tag">{t('course.learning')}</span>
+                    ) : (
+                      topic.isFree && <span className="tag">{t('course.free')}</span>
+                    )}
                   </Link>
                 )}
               </li>

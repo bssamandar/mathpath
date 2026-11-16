@@ -42,7 +42,15 @@ export interface CourseTreeView {
   chapters: {
     id: string;
     title: string;
-    topics: { id: string; title: string; isFree: boolean; locked: boolean }[];
+    topics: {
+      id: string;
+      title: string;
+      isFree: boolean;
+      locked: boolean;
+      /** The caller's progress; absent when signed out. */
+      state?: string;
+      mastery?: number | null;
+    }[];
   }[];
 }
 
@@ -148,6 +156,10 @@ export class CatalogueService {
             .orderBy('t.slug')
             .execute();
 
+    const progress = await this.progressOf(
+      userId,
+      topics.map((t) => t.id),
+    );
     const access = new Map<string, boolean>();
     for (const topic of topics) {
       access.set(
@@ -168,6 +180,12 @@ export class CatalogueService {
             title: this.text(t.title, locale),
             isFree: t.is_free,
             locked: !access.get(t.id),
+            ...(userId === null
+              ? {}
+              : {
+                  state: progress.get(t.id)?.state ?? 'not_started',
+                  mastery: numberOrNull(progress.get(t.id)?.mastery),
+                }),
           })),
       })),
     };
@@ -180,12 +198,19 @@ export class CatalogueService {
   async lesson(topicId: string, locale: string, userId: string): Promise<LessonView> {
     const topic = await this.openTopic(topicId, userId);
     const steps = lessonStep.array().parse(topic.steps);
+    const progress = (await this.progressOf(userId, [topicId])).get(topicId);
+    const done = new Set(progress?.steps_completed ?? []);
+    const mastered = Boolean(progress?.mastered_at);
     return {
       topicId: topic.id,
       versionId: topic.version_id,
       title: this.text(topic.title, locale),
-      // Progress tracking arrives with the learning module (step 6.4).
-      steps: steps.map((step, index) => this.stepView(step, index, locale)),
+      // Videos and activities are marked done one by one; practice and the
+      // tests count as done once the topic has been mastered.
+      steps: steps.map((step, index) => ({
+        ...this.stepView(step, index, locale),
+        completed: step.type === 'video' || step.type === 'activity' ? done.has(index) : mastered,
+      })),
     };
   }
 
@@ -211,6 +236,17 @@ export class CatalogueService {
     return topic;
   }
 
+  private async progressOf(userId: string | null, topicIds: string[]) {
+    if (userId === null || topicIds.length === 0) return new Map<string, never>();
+    const rows = await this.db
+      .selectFrom('topic_progress')
+      .select(['topic_id', 'state', 'mastery', 'steps_completed', 'mastered_at'])
+      .where('user_id', '=', userId)
+      .where('topic_id', 'in', topicIds)
+      .execute();
+    return new Map(rows.map((r) => [r.topic_id, r]));
+  }
+
   private stepView(step: LessonStep, index: number, locale: string): LessonStepView {
     const base = { index, type: step.type, completed: false };
     switch (step.type) {
@@ -234,3 +270,6 @@ export class CatalogueService {
     return pickText(text, locale, this.rules.defaultLocale);
   }
 }
+
+const numberOrNull = (value: string | null | undefined): number | null =>
+  value === null || value === undefined ? null : Number(value);

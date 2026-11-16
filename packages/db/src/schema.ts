@@ -368,6 +368,8 @@ export interface AttemptsTable {
   passed: ColumnType<boolean | null, boolean | null | undefined, boolean | null>;
   integrity_flags: ColumnType<string[], string[] | undefined, string[]>;
   idempotency_key: ColumnType<string | null, string | null | undefined, never>;
+  /** The gap router's recommendation after submit (6.4c). */
+  recommendation: ColumnType<unknown, string | null | undefined, string | null>;
   created_at: CreatedAt;
 }
 
@@ -403,6 +405,47 @@ export interface DailyUsageTable {
   day: ColumnType<string, string, never>;
   exercises_count: ColumnType<number, number | undefined, number>;
   minutes_active: ColumnType<number, number | undefined, number>;
+}
+
+export type MasteryState = 'not_started' | 'learning' | 'mastered' | 'needs_review';
+export type DetourStatus = 'open' | 'refreshed' | 'added_to_path' | 'closed';
+
+export interface TopicProgressTable {
+  user_id: string;
+  topic_id: string;
+  topic_version_id: ColumnType<string | null, string | null | undefined, string | null>;
+  state: ColumnType<MasteryState, MasteryState | undefined, MasteryState>;
+  /** numeric(4,3): read as a string. */
+  mastery: ColumnType<string | null, number | null | undefined, number | null>;
+  steps_completed: ColumnType<number[], number[] | undefined, number[]>;
+  mastered_at: NullableTimestamp;
+  next_review_at: NullableTimestamp;
+  review_interval_days: ColumnType<number | null, number | null | undefined, number | null>;
+  /** numeric(3,2): read as a string. */
+  ease: ColumnType<string | null, number | null | undefined, number | null>;
+  review_count: ColumnType<number, number | undefined, number>;
+  updated_at: ColumnType<Date, Date | undefined, Date>;
+}
+
+export interface LearningDetoursTable {
+  id: string;
+  user_id: string;
+  from_topic_id: string;
+  to_topic_id: string;
+  depth: number;
+  status: ColumnType<DetourStatus, DetourStatus | undefined, DetourStatus>;
+  created_at: CreatedAt;
+  resolved_at: NullableTimestamp;
+}
+
+export interface LearningEventsTable {
+  id: string;
+  user_id: string;
+  /** For example `mastery_passed`, `gap_routed`, `review_scheduled`. */
+  type: string;
+  topic_id: string | null;
+  payload: Json<Record<string, unknown>>;
+  created_at: CreatedAt;
 }
 
 export interface TopicPrerequisitesTable {
@@ -502,6 +545,9 @@ export interface Database {
   attempts: AttemptsTable;
   attempt_items: AttemptItemsTable;
   daily_usage: DailyUsageTable;
+  topic_progress: TopicProgressTable;
+  learning_detours: LearningDetoursTable;
+  learning_events: LearningEventsTable;
 }
 
 export type TableName = keyof Database;

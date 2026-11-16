@@ -42,8 +42,20 @@ function LessonView({ topicId }: { topicId: string }) {
 
   const step = lesson && current !== null ? lesson.steps[current] : undefined;
   const markSeen = (index: number) => setSeen((s) => new Set(s).add(index));
+  /**
+   * Videos and activities have no questions, so leaving them (or a video
+   * ending) records them as done; practice and tests finish through their
+   * attempts. A failure here is not worth interrupting the learner for.
+   */
+  const completeStep = (s: LessonStep | undefined) => {
+    if (!s || s.completed || (s.type !== 'video' && s.type !== 'activity')) return;
+    api(`/topics/${topicId}/steps/${s.index}/complete`, { method: 'POST' }).catch(() => {});
+  };
   const goTo = (index: number) => {
-    if (current !== null) markSeen(current);
+    if (current !== null) {
+      markSeen(current);
+      completeStep(lesson?.steps[current]);
+    }
     setCurrent(index);
     window.scrollTo({ top: 0 });
   };
@@ -85,7 +97,11 @@ function LessonView({ topicId }: { topicId: string }) {
                 key={step.index}
                 step={step}
                 topicId={topicId}
-                onDone={() => markSeen(current)}
+                courseId={courseId}
+                onDone={() => {
+                  markSeen(current);
+                  completeStep(step);
+                }}
                 onPractise={() => {
                   const practice = lesson.steps.findIndex((s) => s.type === 'practice');
                   if (practice !== -1) goTo(practice);
@@ -114,6 +130,7 @@ function LessonView({ topicId }: { topicId: string }) {
                   if (current < lesson.steps.length - 1) goTo(current + 1);
                   else {
                     markSeen(current);
+                    completeStep(step);
                     setFinished(true);
                   }
                 }}
@@ -132,11 +149,13 @@ function LessonView({ topicId }: { topicId: string }) {
 function StepView({
   step,
   topicId,
+  courseId,
   onDone,
   onPractise,
 }: {
   step: LessonStep;
   topicId: string;
+  courseId: string | null;
   onDone(): void;
   onPractise(): void;
 }) {
@@ -153,7 +172,7 @@ function StepView({
     );
   }
   if (step.type === 'mastery_test') {
-    return <MasteryStep topicId={topicId} onPractise={onPractise} />;
+    return <MasteryStep topicId={topicId} courseId={courseId} onPractise={onPractise} />;
   }
   return (
     <section className="step-placeholder">

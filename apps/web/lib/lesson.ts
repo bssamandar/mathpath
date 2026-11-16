@@ -16,9 +16,19 @@ export interface CourseTree {
   chapters: {
     id: string;
     title: string;
-    topics: { id: string; title: string; isFree: boolean; locked: boolean }[];
+    topics: {
+      id: string;
+      title: string;
+      isFree: boolean;
+      locked: boolean;
+      /** Present when signed in. */
+      state?: TopicState;
+      mastery?: number | null;
+    }[];
   }[];
 }
+
+export type TopicState = 'not_started' | 'learning' | 'mastered' | 'needs_review';
 
 export type StepType = 'video' | 'activity' | 'practice' | 'mastery_test' | 'review';
 

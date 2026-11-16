@@ -828,11 +828,18 @@ paths:
       tags: [Learning]
       operationId: getLearningPath
       summary: Current personal learning path for a course.
-      description: Accessible to the student, their linked parents and teachers with sharing consent.
+      description: |
+        Accessible to the student, their linked parents and (later) teachers with
+        sharing consent; anyone else gets 404 `STUDENT_NOT_FOUND`. Computed on
+        read from current progress: due reviews first, then the course's topics
+        with every prerequisite before the topic that needs it, without
+        mastered topics; a prerequisite a failed gap check added sits just
+        before the topic it helps.
       x-permission: progress:read
       parameters:
         - $ref: '#/components/parameters/StudentId'
         - { name: courseId, in: query, required: true, schema: { $ref: '#/components/schemas/Id' } }
+        - { name: locale, in: query, required: false, schema: { type: string, enum: [uz-Latn, ru, en] } }
       responses:
         '200':
           description: OK
@@ -840,16 +847,19 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/LearningPath' }
         '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
 
   /students/{studentId}/progress:
     get:
       tags: [Learning]
       operationId: getProgress
       summary: Mastery by topic, time spent and weak areas for a course.
+      description: Same access rule as the learning path. Time spent is server-measured answer time, at most 5 minutes per question.
       x-permission: progress:read
       parameters:
         - $ref: '#/components/parameters/StudentId'
         - { name: courseId, in: query, required: true, schema: { $ref: '#/components/schemas/Id' } }
+        - { name: locale, in: query, required: false, schema: { type: string, enum: [uz-Latn, ru, en] } }
       responses:
         '200':
           description: OK
@@ -857,19 +867,25 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Progress' }
         '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
 
   /topics/{topicId}/steps/{stepIndex}/complete:
     post:
       tags: [Learning]
       operationId: completeStep
       summary: Mark a non-assessed step (video, activity) as completed.
-      description: Grants no XP (XP is awarded only for demonstrated mastery).
+      description: |
+        Grants no XP (XP is awarded only for demonstrated mastery). Repeating it
+        is harmless. Practice and tests complete through their attempts (409
+        `STEP_ASSESSED`).
       x-permission: learning:write
       parameters:
         - $ref: '#/components/parameters/TopicId'
-        - { name: stepIndex, in: path, required: true, schema: { type: integer, minimum: 0 } }
+        - { name: stepIndex, in: path, required: true, schema: { type: integer, minimum: 0, maximum: 100 } }
       responses:
         '204': { description: Recorded. }
+        '402': { $ref: '#/components/responses/PaymentRequired' }
+        '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
 
   /me/reviews/due:
@@ -889,6 +905,7 @@ paths:
                 properties:
                   items:
                     type: array
+                    description: Due now, oldest first, at most 50.
                     items:
                       type: object
                       required: [topicId, title, dueAt]
@@ -910,10 +927,14 @@ paths:
 
         A learner has at most one open attempt per assessment: starting again
         returns the open one with status 200 instead of dealing new questions.
-        Step 6.4(b) runs `practice` and `mastery` on a `topicId`; the other
+        `practice`, `mastery` and `review` run on a `topicId`; the other
         types return 422 `ASSESSMENT_UNAVAILABLE` until they are built. A
         mastery test needs `learning.practice.minCorrectBeforeMasteryTest`
         correct practice answers on the topic first (409 `MASTERY_LOCKED`).
+        A `review` is either the short check the gap router asked for
+        (`gapRouting.miniCheckItems` questions) or a spaced review of a
+        mastered topic (`review.items` questions); otherwise 409
+        `REVIEW_NOT_AVAILABLE`.
       x-permission: assessment:take
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -945,7 +966,7 @@ paths:
         '402': { $ref: '#/components/responses/PaymentRequired' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409':
-          description: '`NO_QUESTIONS` (the topic has no published questions) or `MASTERY_LOCKED`.'
+          description: '`NO_QUESTIONS` (the topic has no published questions), `MASTERY_LOCKED` or `REVIEW_NOT_AVAILABLE`.'
           content:
             application/problem+json:
               schema: { $ref: '#/components/schemas/Problem' }
@@ -2726,11 +2747,23 @@ components:
               solution: { type: [string, 'null'] }
         recommendation:
           type: object
-          description: Output of the gap router.
+          description: |
+            Output of the gap router (architecture §5.2), stored with the attempt.
+            `prerequisite_review` names the prerequisite to check with a `review`
+            attempt; `continue` names the next topic (or the topic to return to
+            after a passed check); `take_break` means the detour limits were
+            reached and the parent is told in their report.
+          required: [action, topicId]
           properties:
             action: { type: string, enum: [continue, retry_practice, prerequisite_review, take_break] }
-            topicId: { $ref: '#/components/schemas/Id' }
-            message: { type: string }
+            topicId: { type: ['string', 'null'], format: uuid }
+            topicTitle: { type: ['string', 'null'] }
+            reason:
+              type: string
+              description: |
+                Stable code: no_weak_prerequisite, not_mastered, low_mastery, stale,
+                needs_review, max_depth, max_per_day, gap_refreshed,
+                gap_added_to_path, review_passed, review_failed.
 
     TopicAssessmentStatus:
       type: object

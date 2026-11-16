@@ -38,6 +38,13 @@ export const learningSchema = z
         path: ['solutionAfterMistakes'],
       }),
     masteryTest: z.object({ items: positiveInt.max(40) }).strict(),
+    review: z
+      .object({
+        items: positiveInt.max(20),
+        // SM-2 starts every card at 2.5 and never lets the ease fall below 1.3.
+        initialEase: z.number().min(1.3).max(3),
+      })
+      .strict(),
     gapRouting: z
       .object({
         maxDepth: positiveInt,

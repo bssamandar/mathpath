@@ -11,6 +11,7 @@ import { DatabaseModule } from './database/database.module';
 import { FamilyModule } from './family/family.module';
 import { HealthModule } from './health/health.module';
 import { IdentityModule } from './identity/identity.module';
+import { LearningModule } from './learning/learning.module';
 
 /**
  * Root module. Each domain module from docs/architecture.md §4 (identity,
@@ -29,6 +30,7 @@ import { IdentityModule } from './identity/identity.module';
     FamilyModule,
     ContentModule,
     MediaModule,
+    LearningModule,
     AssessmentModule,
   ],
 })
