@@ -2,7 +2,12 @@ import { DEMO_IDS, newId, type Role, seedDemoContent } from '@mathpath/db';
 import { randomUUID } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { TRANSACTION_TIMEOUT_MS } from '../src/billing/payme/payme';
-import { SessionService } from '../src/identity/session.service';
+import {
+  checkout as checkoutOf,
+  family as familyOf,
+  user as userOf,
+  withEnv,
+} from './billing.helpers';
 import { browser, createTestApp, type TestApp } from './helpers';
 
 const MERCHANT = '0123456789abcdef01234567';
@@ -13,24 +18,10 @@ const PAID_TOPIC = DEMO_IDS.topics[1];
 const MONTHLY = 9_900_000;
 
 let t: TestApp;
-const saved: Record<string, string | undefined> = {};
+const env = withEnv({ PAYMENT_PROVIDERS: 'payme', PAYME_MERCHANT_ID: MERCHANT, PAYME_KEY: KEY });
 
-beforeAll(() => {
-  for (const [k, v] of Object.entries({
-    PAYMENT_PROVIDERS: 'payme',
-    PAYME_MERCHANT_ID: MERCHANT,
-    PAYME_KEY: KEY,
-  })) {
-    saved[k] = process.env[k];
-    process.env[k] = v;
-  }
-});
-afterAll(() => {
-  for (const [k, v] of Object.entries(saved)) {
-    if (v === undefined) delete process.env[k];
-    else process.env[k] = v;
-  }
-});
+beforeAll(() => env.set());
+afterAll(() => env.restore());
 beforeEach(async () => {
   t = await createTestApp();
   await seedDemoContent(t.db);
@@ -40,61 +31,10 @@ afterEach(async () => {
 });
 
 const http = () => browser(t.app.getHttpServer());
-const client = {
-  ipPrefix: null,
-  userAgentSummary: null,
-  requestId: null,
-  automationSuspected: false,
-};
-
-async function user(roles: Role[]) {
-  const id = newId();
-  await t.db.insertInto('users').values({ id, first_name: 'Aziza' }).execute();
-  await t.db
-    .insertInto('user_roles')
-    .values(roles.map((role) => ({ user_id: id, role })))
-    .execute();
-  const auth = async () =>
-    `Bearer ${(await t.app.get(SessionService).start(id, client, 'password')).accessToken}`;
-  return { id, auth };
-}
-
-/** A parent with `n` linked children. */
-async function family(n = 1) {
-  const parent = await user(['parent']);
-  const children = [];
-  for (let i = 0; i < n; i++) {
-    const child = await user(['student']);
-    const consent = newId();
-    await t.db
-      .insertInto('consents')
-      .values({
-        id: consent,
-        parent_id: parent.id,
-        child_id: child.id,
-        policy_version: 'test',
-        scopes: ['learning'],
-        method: 'otp_confirmed',
-      })
-      .execute();
-    await t.db
-      .insertInto('parent_child_links')
-      .values({ parent_id: parent.id, child_id: child.id, consent_id: consent })
-      .execute();
-    children.push(child);
-  }
-  return { parent, children };
-}
-
-async function checkout(
-  auth: string,
-  body: Record<string, unknown>,
-  key: string | null = randomUUID(),
-) {
-  const req = http().post('/api/v1/checkout').set('Authorization', auth);
-  if (key) req.set('Idempotency-Key', key);
-  return req.send({ planCode: 'individual_monthly', provider: 'payme', ...body });
-}
+const user = (roles: Role[]) => userOf(t, roles);
+const family = (n = 1) => familyOf(t, n);
+const checkout = (auth: string, body: Record<string, unknown>, key?: string | null) =>
+  checkoutOf(t, auth, body, key);
 
 let rpcId = 0;
 async function payme(method: string, params: unknown, auth: string | null = PAYME_AUTH) {

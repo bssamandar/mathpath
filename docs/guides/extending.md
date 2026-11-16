@@ -36,7 +36,9 @@ _Status: question engine arrives in step 6.4._
 
 ## Add a payment provider
 
-Payme (`apps/api/src/billing/payme/`) is the worked example.
+Payme (`apps/api/src/billing/payme/`, JSON-RPC with a key) and Click
+(`apps/api/src/billing/click/`, form posts with an MD5 signature) are the worked
+examples.
 
 1. Extend `PaymentProvider` (`apps/api/src/billing/payment-provider.ts`,
    [ADR-0008](../adr/0008-payment-provider-adapters.md)) with the provider's

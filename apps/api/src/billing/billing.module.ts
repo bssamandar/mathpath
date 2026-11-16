@@ -15,6 +15,7 @@ import { DB } from '../database/database.module';
 import { BillingController, PaymentCallbacksController } from './billing.controller';
 import { BillingService } from './billing.service';
 import { PAYMENT_PROVIDERS as PROVIDERS, type PaymentProvider } from './payment-provider';
+import { ClickProvider } from './click/click';
 import { PaymeProvider } from './payme/payme';
 
 @Module({
@@ -53,6 +54,27 @@ import { PaymeProvider } from './payme/payme';
         });
         providers.set('payme', payme);
         return payme;
+      },
+    },
+    {
+      provide: ClickProvider,
+      inject: [DB, Clock, BillingService, PROVIDERS, ENV],
+      useFactory: (
+        db: Kysely<Database>,
+        clock: Clock,
+        billing: BillingService,
+        providers: Map<string, PaymentProvider>,
+        env: Env,
+      ) => {
+        if (!env.PAYMENT_PROVIDERS.includes('click')) return null;
+        const click = new ClickProvider(db, clock, billing, {
+          serviceId: env.CLICK_SERVICE_ID!,
+          merchantId: env.CLICK_MERCHANT_ID!,
+          secretKey: env.CLICK_SECRET_KEY!,
+          checkoutUrl: env.CLICK_CHECKOUT_URL,
+        });
+        providers.set('click', click);
+        return click;
       },
     },
   ],

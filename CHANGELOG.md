@@ -145,6 +145,11 @@ project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   calls answered from the stored transaction, 12-hour timeout, refund after
   payment, optional fiscal receipt details. Providers are switched on with
   `PAYMENT_PROVIDERS`.
+- Click Shop API at `POST /payments/click/prepare` and `/complete`: MD5
+  signature checked in constant time before anything else, every call logged,
+  repeated calls answered from the stored transaction, a failed charge cancels
+  the payment, and a new attempt replaces an unfinished one. Checkout sends the
+  parent to `my.click.uz` with the amount in sum.
 - Errors are returned as RFC 9457 problem details with a stable `code` and request ID.
 - CI (format, lint, typecheck, tests with an 80% coverage gate, build) and security
   scanning (gitleaks, pnpm audit, OSV-Scanner, Semgrep, CodeQL); Renovate.

@@ -513,6 +513,20 @@ describe('billing constraints', () => {
     await insertPayment(order); // a new attempt after a cancelled one
   });
 
+  it('numbers every payment for providers that want an integer ID', async () => {
+    const order = await insertOrder();
+    const first = await insertPayment(order);
+    await setStatus(first, 'cancelled');
+    const second = await insertPayment(order);
+    const refs = await db
+      .selectFrom('payments')
+      .select(['id', 'merchant_ref'])
+      .where('id', 'in', [first, second])
+      .execute();
+    const byId = new Map(refs.map((r) => [r.id, Number(r.merchant_ref)]));
+    expect(byId.get(second)!).toBeGreaterThan(byId.get(first)!);
+  });
+
   it('stores money as whole tiyin and refuses non-positive amounts', async () => {
     const order = await insertOrder();
     const row = await db

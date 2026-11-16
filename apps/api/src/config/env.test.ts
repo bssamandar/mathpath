@@ -22,18 +22,26 @@ describe('parseEnv', () => {
     expect(env.CORS_ORIGINS).toEqual(['https://mathpath.uz', 'https://studio.mathpath.uz']);
   });
 
-  it('closes checkout by default and needs Payme credentials when Payme is on', () => {
+  it('closes checkout by default and needs credentials for each provider that is on', () => {
     expect(parseEnv(base).PAYMENT_PROVIDERS).toEqual([]);
     expect(() => parseEnv({ ...base, PAYMENT_PROVIDERS: 'payme' })).toThrow(/PAYME_KEY/);
+    expect(() => parseEnv({ ...base, PAYMENT_PROVIDERS: 'click' })).toThrow(/CLICK_SECRET_KEY/);
+    expect(() =>
+      parseEnv({ ...base, PAYMENT_PROVIDERS: 'click', CLICK_SERVICE_ID: 'abc' }),
+    ).toThrow(/CLICK_SERVICE_ID/);
     expect(() => parseEnv({ ...base, PAYMENT_PROVIDERS: 'stripe' })).toThrow(/PAYMENT_PROVIDERS/);
     const env = parseEnv({
       ...base,
       PAYMENT_PROVIDERS: 'payme, click',
       PAYME_MERCHANT_ID: '0123456789abcdef01234567',
       PAYME_KEY: secret,
+      CLICK_SERVICE_ID: '12345',
+      CLICK_MERCHANT_ID: '678',
+      CLICK_SECRET_KEY: secret,
     });
     expect(env.PAYMENT_PROVIDERS).toEqual(['payme', 'click']);
     expect(env.PAYME_CHECKOUT_URL).toBe('https://checkout.test.paycom.uz');
+    expect(env.CLICK_CHECKOUT_URL).toBe('https://my.click.uz/services/pay');
   });
 
   it('rejects invalid values and names the variable', () => {
