@@ -59,6 +59,8 @@ const expectedTables: TableName[] = [
   'user_stats',
   'user_badges',
   'user_quests',
+  'leagues',
+  'league_members',
   'subscriptions',
   'subscription_members',
   'question_templates',
@@ -647,6 +649,28 @@ describe('gamification constraints', () => {
     await quest(5, true);
     await expect(quest(5, false)).rejects.toThrow(/check/);
     await expect(quest(2, true)).rejects.toThrow(/check/);
+  });
+
+  it('puts a learner in one league a week, starting on a Monday', async () => {
+    const user = await insertUser({ phone_e164: null });
+    const league = (week: string, cohort: number) => {
+      const id = newId();
+      return db
+        .insertInto('leagues')
+        .values({ id, week_start: week, tier: 1, band: 0, cohort })
+        .execute()
+        .then(() => id);
+    };
+    await expect(league('2026-11-18', 1)).rejects.toThrow(/check/); // a Wednesday
+    const first = await league('2026-11-16', 1);
+    const second = await league('2026-11-16', 2);
+    const join = (leagueId: string) =>
+      db
+        .insertInto('league_members')
+        .values({ league_id: leagueId, user_id: user, week_start: '2026-11-16' })
+        .execute();
+    await join(first);
+    await expect(join(second)).rejects.toThrow(/league_members_user_id_week_start_key/);
   });
 });
 

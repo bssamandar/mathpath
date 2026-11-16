@@ -132,11 +132,23 @@ export const gamificationSchema = z
         'quest codes must be unique',
       ),
     leagues: z
-      .object({ size: positiveInt, promoteTop: nonNegativeInt, demoteBottom: nonNegativeInt })
+      .object({
+        size: positiveInt,
+        promoteTop: nonNegativeInt,
+        demoteBottom: nonNegativeInt,
+        tiers: positiveInt.max(20),
+        gradeBands: z.array(z.number().int().min(1).max(11)).min(1).max(11),
+      })
       .strict()
       .refine(
         (l) => l.promoteTop + l.demoteBottom < l.size,
         'promotion and demotion zones must not overlap',
+      )
+      .refine(
+        (l) =>
+          l.gradeBands.every((g, i) => i === 0 || g > l.gradeBands[i - 1]!) &&
+          l.gradeBands.at(-1) === 11,
+        'grade bands must rise and end at grade 11',
       ),
     notifications: z.object({ quietHoursStart: clockTime, quietHoursEnd: clockTime }).strict(),
   })

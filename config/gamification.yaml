@@ -21,10 +21,16 @@ quests:
   - { code: correct_5, metric: first_try_correct, target: 5 }
   - { code: xp_50, metric: xp, target: 50 }
   - { code: finish_set, metric: sets_finished, target: 1 }
+# Weekly leagues (Monday to Sunday, Tashkent time). Only children whose parent
+# gave the "leaderboard" consent take part; they are shown by nickname.
 leagues:
   size: 30
   promoteTop: 5
   demoteBottom: 5
+  # Tiers 1 (lowest) to this number; everyone starts in tier 1.
+  tiers: 5
+  # Upper grade of each band: grades 1–4, 5–7 and 8–11 have their own leagues.
+  gradeBands: [4, 7, 11]
 notifications:
   # No notifications to children during quiet hours (local time, 24h clock).
   quietHoursStart: '21:00'

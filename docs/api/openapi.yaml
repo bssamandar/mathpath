@@ -1119,6 +1119,8 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/League' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
 
   # ──────────────────────────── Billing ────────────────────────────
   /plans:
@@ -2973,22 +2975,45 @@ components:
 
     League:
       type: object
-      required: [weekStart, tier, endsAt, standings]
+      description: |
+        The caller's league this week (Monday to Sunday, Tashkent time). Only
+        children whose parent gave the `leaderboard` consent take part; others
+        get `status: off`. Standings show a moderated nickname, or the first
+        name and last initial, plus the avatar code, and never a full name
+        (C-26). A learner joins with their first XP of the week.
+      required: [status, weekStart, endsAt, tier, tiers, zones, standings, lastWeek]
       properties:
+        status: { type: string, enum: [active, not_joined, 'off'] }
         weekStart: { type: string, format: date }
-        tier: { type: integer }
         endsAt: { type: string, format: date-time }
+        tier: { type: integer, minimum: 1, description: 1 is the lowest tier. }
+        tiers: { type: integer }
+        zones:
+          type: object
+          description: How many places move up and down; smaller in a small league.
+          required: [up, down]
+          properties:
+            up: { type: integer }
+            down: { type: integer }
         standings:
           type: array
           items:
             type: object
-            required: [rank, nickname, weeklyXp, isMe]
+            required: [rank, nickname, avatarCode, weeklyXp, isMe]
+            additionalProperties: false
             properties:
               rank: { type: integer }
               nickname: { type: string, description: Never the child's full name. }
-              avatarCode: { type: string }
+              avatarCode: { type: ['string', 'null'] }
               weeklyXp: { type: integer }
               isMe: { type: boolean }
+        lastWeek:
+          type: ['object', 'null']
+          required: [tier, rank, outcome]
+          properties:
+            tier: { type: integer }
+            rank: { type: integer }
+            outcome: { type: string, enum: [promoted, stayed, demoted] }
 
     PaymentProviderCode:
       type: string

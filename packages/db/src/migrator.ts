@@ -10,6 +10,7 @@ import * as m2026111801 from './migrations/2026111801_billing';
 import * as m2026111802 from './migrations/2026111802_payment_refs';
 import * as m2026111803 from './migrations/2026111803_promo_trials';
 import * as m2026111901 from './migrations/2026111901_gamification';
+import * as m2026111902 from './migrations/2026111902_leagues';
 
 /**
  * The ordered list of migrations. Names sort chronologically; each module
@@ -30,6 +31,7 @@ export const migrations: Record<string, Migration> = {
   '2026111802_payment_refs': m2026111802,
   '2026111803_promo_trials': m2026111803,
   '2026111901_gamification': m2026111901,
+  '2026111902_leagues': m2026111902,
 };
 
 function migratorFor(db: Kysely<unknown>, list: Record<string, Migration>): Migrator {

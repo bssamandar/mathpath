@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import {
   hasReward,
   nameKey,
@@ -112,6 +113,9 @@ export function ProgressCard({ summary }: { summary: GamificationSummary }) {
         </>
       )}
       {summary.xpLeftToday === 0 && <p className="hint">{t('xp.capped')}</p>}
+      <Link className="button secondary" href="/league">
+        {t('league.open')}
+      </Link>
     </section>
   );
 }

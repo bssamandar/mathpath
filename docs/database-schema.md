@@ -527,6 +527,19 @@ Hot counters live in Redis and are flushed here.
 **league_members**: PK (`league_id`, `user_id`), `weekly_xp`, `final_rank NULL`.
 Live rankings are in Redis sorted sets, and this table holds the result.
 
+> **Implementation note (step 6.6b, migration `2026111902_leagues`):**
+>
+> - Weekly XP is kept in `league_members.weekly_xp`, not in Redis sorted sets:
+>   a league has about 30 rows, so PostgreSQL ranks them cheaply and there is
+>   no second store to keep in step. Redis becomes worth it for global
+>   leaderboards, which the MVP does not have.
+> - `leagues` adds `band` (grade band index from `leagues.gradeBands`) and
+>   `closed_at`; `week_start` must be a Monday (CHECK). `league_members` adds
+>   `week_start` with UQ (`user_id`, `week_start`), so a learner is in one
+>   league a week, `joined_at` (ties go to who joined first) and `outcome`.
+> - `user_stats.league_tier` is the tier a learner joins next week; the
+>   worker's Monday close (`closeFinishedLeagues`) sets it.
+
 ### 3.9 `certificates`
 
 **certificates**
