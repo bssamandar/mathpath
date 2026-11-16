@@ -1,11 +1,13 @@
 'use client';
 
 import { api } from '@mathpath/client';
+import Link from 'next/link';
 import { use, useCallback, useEffect, useMemo, useState } from 'react';
 import { LessonPreview } from '../../../components/lesson-preview';
 import { type Me, StaffShell } from '../../../components/staff-shell';
 import { LocalisedFields, StepEditor } from '../../../components/step-editor';
-import { Badge, Button, ErrorText, Field } from '../../../components/ui';
+import { Badge, Button, ErrorText } from '../../../components/ui';
+import { NewDraft, ReviewHistory, ReviewPanel } from '../../../components/workflow';
 import {
   canPublish,
   canReview,
@@ -172,6 +174,9 @@ function TopicEditor({ topicId, me }: { topicId: string; me: Me }) {
           <span>{t('editor.version', { n: version.versionNo })}</span>
           {editable && <span>{dirty ? t('editor.unsaved') : t('editor.saved')}</span>}
         </div>
+        <p>
+          <Link href={`/topics/${topicId}/questions`}>{t('questions.open')}</Link>
+        </p>
         {!editable && (
           <p className="hint">{t('editor.readOnly', { status: t(`status.${version.status}`) })}</p>
         )}
@@ -296,71 +301,10 @@ function TopicEditor({ topicId, me }: { topicId: string; me: Me }) {
           </section>
         )}
 
-        {version.reviews.length > 0 && (
-          <section className="panel">
-            <h2>{t('review.history')}</h2>
-            <ul>
-              {version.reviews.map((r) => (
-                <li key={r.createdAt}>
-                  <Badge tone={r.decision}>{t(`status.${r.decision as 'approved'}`)}</Badge>{' '}
-                  {new Date(r.createdAt).toLocaleString('uz-Latn')}
-                  {(r.comments as { text: string }[]).map((c, i) => (
-                    <blockquote key={i}>{c.text}</blockquote>
-                  ))}
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
+        <ReviewHistory reviews={version.reviews} />
       </section>
 
       <LessonPreview draft={draft} />
     </div>
-  );
-}
-
-function NewDraft({ busy, onClick }: { busy: boolean; onClick(): void }) {
-  return (
-    <div className="new-draft">
-      <Button busy={busy} onClick={onClick}>
-        {t('editor.newDraft')}
-      </Button>
-      <p className="hint">{t('editor.newDraftHint')}</p>
-    </div>
-  );
-}
-
-function ReviewPanel({
-  allowed,
-  busy,
-  comment,
-  setComment,
-  onDecide,
-}: {
-  allowed: boolean;
-  busy: boolean;
-  comment: string;
-  setComment(value: string): void;
-  onDecide(decision: 'approved' | 'changes_requested'): void;
-}) {
-  return (
-    <section className="panel">
-      <h2>{t('review.title')}</h2>
-      {!allowed ? (
-        <p className="hint">{t('review.ownWork')}</p>
-      ) : (
-        <>
-          <Field label={t('review.comment')} multiline value={comment} onChange={setComment} />
-          <div className="actions">
-            <Button busy={busy} onClick={() => onDecide('approved')}>
-              {t('review.approve')}
-            </Button>
-            <Button variant="secondary" busy={busy} onClick={() => onDecide('changes_requested')}>
-              {t('review.requestChanges')}
-            </Button>
-          </div>
-        </>
-      )}
-    </section>
   );
 }

@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import 'katex/dist/katex.min.css';
 import type { ReactNode } from 'react';
 import './globals.css';
 
