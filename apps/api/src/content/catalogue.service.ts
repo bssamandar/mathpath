@@ -15,11 +15,16 @@ import { type LessonStep, lessonStep, pickText } from './documents';
 /** Answers "may this user open this paid topic?". Billing provides the real one (step 6.5). */
 export abstract class Entitlements {
   abstract hasAccess(userId: string, topicId: string): Promise<boolean>;
+  /** True while the learner has a paid plan; free users get the daily exercise limit. */
+  abstract hasSubscription(userId: string): Promise<boolean>;
 }
 
 /** Until billing exists, nobody has a paid entitlement; free topics stay open. */
 export class NoEntitlements extends Entitlements {
   hasAccess(): Promise<boolean> {
+    return Promise.resolve(false);
+  }
+  hasSubscription(): Promise<boolean> {
     return Promise.resolve(false);
   }
 }
@@ -173,6 +178,22 @@ export class CatalogueService {
    * @throws ProblemException 404 when unpublished, 402 PAYMENT_REQUIRED without access.
    */
   async lesson(topicId: string, locale: string, userId: string): Promise<LessonView> {
+    const topic = await this.openTopic(topicId, userId);
+    const steps = lessonStep.array().parse(topic.steps);
+    return {
+      topicId: topic.id,
+      versionId: topic.version_id,
+      title: this.text(topic.title, locale),
+      // Progress tracking arrives with the learning module (step 6.4).
+      steps: steps.map((step, index) => this.stepView(step, index, locale)),
+    };
+  }
+
+  /**
+   * A published topic the learner may open, with its title in every locale.
+   * @throws ProblemException 404 when unpublished, 402 PAYMENT_REQUIRED without access.
+   */
+  async openTopic(topicId: string, userId: string) {
     const topic = await this.db
       .selectFrom('topics as t')
       .innerJoin('topic_versions as v', 'v.id', 't.published_version_id')
@@ -187,14 +208,7 @@ export class CatalogueService {
     if (!topic.is_free && !(await this.entitlements.hasAccess(userId, topicId))) {
       throw new ProblemException(402, 'PAYMENT_REQUIRED', 'This topic is part of a paid plan.');
     }
-    const steps = lessonStep.array().parse(topic.steps);
-    return {
-      topicId: topic.id,
-      versionId: topic.version_id,
-      title: this.text(topic.title, locale),
-      // Progress tracking arrives with the learning module (step 6.4).
-      steps: steps.map((step, index) => this.stepView(step, index, locale)),
-    };
+    return topic;
   }
 
   private stepView(step: LessonStep, index: number, locale: string): LessonStepView {

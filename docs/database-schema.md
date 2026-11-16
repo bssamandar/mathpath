@@ -447,6 +447,22 @@ latest path per (user, course) is current (`is_current boolean`, partial UQ).
 `minutes_active`. Enforces the free-tier daily limit and the parent's time limit.
 Hot counters live in Redis and are flushed here.
 
+> **Implementation note (step 6.4b, migration `2026111701_assessment`):**
+>
+> - `assessments` rows for topic practice and mastery are created on first use;
+>   an empty `blueprint` means "use config/learning.yaml", so a config change
+>   applies without rewriting rows.
+> - `attempts` adds `topic_id` (for the topic status query) and a partial
+>   unique index: one `in_progress` attempt per learner and assessment, so a
+>   second start resumes the open one.
+> - `attempt_items` adds `seed`, `feedback` (hints and solution for this
+>   item's numbers, server-only like `answer_key`), and `last_request_key` /
+>   `last_result` so a retried answer with the same Idempotency-Key is not
+>   counted twice. It starts as a plain table, like `audit_log`.
+> - `daily_usage` is updated directly in PostgreSQL with a conditional
+>   upsert (`exercises_count < limit`), which is atomic; Redis counters can
+>   come later if this becomes hot. Days are Tashkent days (UTC+5).
+
 ### 3.8 `gamification`
 
 **xp_ledger** (partitioned monthly)

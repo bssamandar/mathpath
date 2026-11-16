@@ -361,7 +361,7 @@ a.card:hover {
   color: var(--color-danger);
 }
 .step-placeholder,
-.done {
+section.done {
   padding: calc(var(--space) * 4);
   border: 1px dashed var(--color-border);
   border-radius: var(--radius);
@@ -369,4 +369,183 @@ a.card:hover {
 .lesson-nav {
   justify-content: space-between;
   margin: calc(var(--space) * 6) 0 calc(var(--space) * 10);
+}
+
+/* Question screen, practice and mastery test (UX S5, S6). */
+.question,
+.practice-intro {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--space) * 4);
+}
+.question-head {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--space) * 3);
+  color: var(--color-muted-text);
+  font-size: 0.9rem;
+}
+.question-head progress,
+.practice-intro progress {
+  flex: 1;
+  width: 100%;
+  height: 8px;
+  accent-color: var(--color-primary);
+}
+.math-text {
+  max-width: 60ch;
+  font-size: 1.125rem;
+  line-height: 1.6;
+}
+.math-text .katex {
+  font-size: 1.15em;
+}
+.choices {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--space) * 2);
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+.choice {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--space) * 3);
+  min-height: var(--target-min);
+  padding: calc(var(--space) * 2) calc(var(--space) * 4);
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+.choice.picked {
+  border-color: var(--color-primary);
+  background: var(--color-muted-surface);
+}
+.choice input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+}
+.choice:focus-within {
+  outline: 3px solid var(--color-primary);
+  outline-offset: 2px;
+}
+.letter {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid var(--color-border);
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.choice.picked .letter {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: var(--color-primary-text);
+}
+.number-answer {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--space) * 3);
+  max-width: 360px;
+}
+.answer-input {
+  min-height: 56px;
+  padding: 0 calc(var(--space) * 4);
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius);
+  font: inherit;
+  font-size: 1.5rem;
+  text-align: center;
+}
+.pad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: calc(var(--space) * 2);
+}
+.pad-key {
+  min-height: var(--target-min);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 1.25rem;
+  cursor: pointer;
+}
+.pad-key:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.feedback {
+  padding: calc(var(--space) * 4);
+  border-radius: var(--radius);
+  border-left: 6px solid var(--color-border);
+  background: var(--color-muted-surface);
+}
+.feedback p {
+  margin: 0 0 calc(var(--space) * 2);
+}
+.feedback.success {
+  border-left-color: var(--color-success);
+}
+.feedback.attention {
+  border-left-color: var(--color-attention);
+}
+.feedback.neutral {
+  border-left-color: var(--color-primary);
+}
+.feedback-title {
+  font-weight: 700;
+}
+.mastery-result {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: calc(var(--space) * 4);
+}
+.score-circle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 140px;
+  height: 140px;
+  border-radius: 50%;
+  border: 10px solid var(--color-attention);
+}
+.score-circle.passed {
+  border-color: var(--color-success);
+}
+.score-value {
+  font-size: 2rem;
+  font-weight: 700;
+}
+.review {
+  align-self: stretch;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--space) * 2);
+}
+.review li {
+  padding: calc(var(--space) * 2) calc(var(--space) * 4);
+  border: 1px solid var(--color-border);
+  border-left: 6px solid var(--color-success);
+  border-radius: var(--radius);
+}
+.review li.wrong {
+  border-left-color: var(--color-attention);
+}
+.review summary {
+  min-height: var(--target-min);
+  display: flex;
+  align-items: center;
+  cursor: pointer;
 }

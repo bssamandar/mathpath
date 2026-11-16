@@ -907,6 +907,13 @@ paths:
         Generates parameterised items server-side with a per-item seed.
         Enforces entitlements and the free daily exercise limit. Timed tests get
         a server-enforced `deadlineAt`.
+
+        A learner has at most one open attempt per assessment: starting again
+        returns the open one with status 200 instead of dealing new questions.
+        Step 6.4(b) runs `practice` and `mastery` on a `topicId`; the other
+        types return 422 `ASSESSMENT_UNAVAILABLE` until they are built. A
+        mastery test needs `learning.practice.minCorrectBeforeMasteryTest`
+        correct practice answers on the topic first (409 `MASTERY_LOCKED`).
       x-permission: assessment:take
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -925,13 +932,24 @@ paths:
                 courseId: { $ref: '#/components/schemas/Id' }
                 assignmentId: { $ref: '#/components/schemas/Id' }
       responses:
+        '200':
+          description: The learner's open attempt on this assessment, resumed.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Attempt' }
         '201':
           description: Attempt created.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Attempt' }
         '402': { $ref: '#/components/responses/PaymentRequired' }
-        '409': { $ref: '#/components/responses/Conflict' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: '`NO_QUESTIONS` (the topic has no published questions) or `MASTERY_LOCKED`.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
         '429': { $ref: '#/components/responses/TooManyRequests' }
 
   /attempts/{attemptId}:
@@ -975,7 +993,14 @@ paths:
       description: |
         Feedback follows the assessment's policy: practice returns a hint after
         the first mistake and the full solution after the second; tests return
-        only `accepted: true` until the attempt is submitted.
+        only `accepted: true` until the attempt is submitted, and the learner may
+        change an answer until then.
+
+        In practice an answer that cannot be read (for example `3,,5`) returns
+        `accepted: false, reason: unreadable` and does not use a try. The first
+        marked answer on an item counts against the free daily exercise limit
+        (402 `DAILY_LIMIT_REACHED` once it is used up). A retry with the same
+        `Idempotency-Key` returns the first result without counting again.
       x-permission: assessment:take
       parameters:
         - $ref: '#/components/parameters/AttemptId'
@@ -999,7 +1024,13 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/AnswerFeedback' }
-        '409': { $ref: '#/components/responses/Conflict' }
+        '402': { $ref: '#/components/responses/PaymentRequired' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: '`ATTEMPT_CLOSED` or `ITEM_CLOSED` (the practice item is already finished).'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
         '410': { $ref: '#/components/responses/Gone' }
 
   /attempts/{attemptId}/submit:
@@ -1007,6 +1038,7 @@ paths:
       tags: [Assessment]
       operationId: submitAttempt
       summary: Finish an attempt and get the result.
+      description: Marks a test. Submitting a finished attempt again returns the same result.
       x-permission: assessment:take
       parameters:
         - $ref: '#/components/parameters/AttemptId'
@@ -1017,7 +1049,26 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/AttemptResult' }
+        '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+        '410': { $ref: '#/components/responses/Gone' }
+
+  /topics/{topicId}/assessment-status:
+    get:
+      tags: [Assessment]
+      operationId: getTopicAssessmentStatus
+      summary: What the lesson player needs for the practice and mastery steps of a topic.
+      x-permission: assessment:take
+      parameters:
+        - $ref: '#/components/parameters/TopicId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TopicAssessmentStatus' }
+        '402': { $ref: '#/components/responses/PaymentRequired' }
+        '404': { $ref: '#/components/responses/NotFound' }
 
   # ────────────────────────── Gamification ──────────────────────────
   /me/gamification:
@@ -2162,7 +2213,7 @@ components:
       name: position
       in: path
       required: true
-      schema: { type: integer, minimum: 0 }
+      schema: { type: integer, minimum: 1, maximum: 200 }
     ClassId:
       name: classId
       in: path
@@ -2531,6 +2582,7 @@ components:
       properties:
         id: { $ref: '#/components/schemas/Id' }
         type: { $ref: '#/components/schemas/AssessmentType' }
+        topicId: { type: ['string', 'null'], format: uuid }
         status: { type: string, enum: [in_progress, submitted, expired, invalidated] }
         itemCount: { type: integer, description: For adaptive diagnostics this is the maximum. }
         answeredCount: { type: integer }
@@ -2567,11 +2619,16 @@ components:
         ordering:
           type: array
           items: { type: object, properties: { id: { type: string }, label: { type: string } } }
-        inputHint: { type: string, description: For example "fraction" or "integer" for the math keyboard. }
+        inputHint:
+          type: string
+          enum: [number, fraction, single, multiple]
+          description: Which answer control to show (number pad, fraction pad, or choices).
         media:
           type: array
           items: { type: string, format: uri }
         previousResponse: { $ref: '#/components/schemas/AnswerResponse' }
+        closed: { type: boolean, description: Practice only. The item is finished (right, or solution shown). }
+        lastFeedback: { $ref: '#/components/schemas/AnswerFeedback' }
 
     QuestionType:
       type: string
@@ -2623,11 +2680,18 @@ components:
       type: object
       required: [accepted]
       properties:
-        accepted: { type: boolean }
+        accepted: { type: boolean, description: false when the answer could not be read; no try is used. }
         correct: { type: [boolean, 'null'], description: null in tests until submission. }
+        reason:
+          type: string
+          enum: [unreadable, not_simplified, form, wrong]
+          description: Why the answer was not right, so the screen can say "simplify the fraction".
         triesLeft: { type: integer }
         hint: { type: [string, 'null'] }
         solution: { type: [string, 'null'], description: 'Full worked solution, shown per feedback policy.' }
+        correctAnswer:
+          type: [string, 'null']
+          description: The right answer (inline LaTeX allowed), once a practice item is finished without it.
         xpAwarded: { type: integer, description: Shown optimistically; the ledger is authoritative. }
         nextPosition: { type: [integer, 'null'], description: For adaptive diagnostics. }
 
@@ -2636,6 +2700,7 @@ components:
       required: [attemptId, score, maxScore, passed, byTopic]
       properties:
         attemptId: { $ref: '#/components/schemas/Id' }
+        type: { $ref: '#/components/schemas/AssessmentType' }
         score: { type: number }
         maxScore: { type: number }
         passed: { type: [boolean, 'null'] }
@@ -2656,7 +2721,9 @@ components:
             properties:
               position: { type: integer }
               correct: { type: boolean }
-              solution: { type: string }
+              stem: { type: string }
+              correctAnswer: { type: string, description: Inline LaTeX allowed. }
+              solution: { type: [string, 'null'] }
         recommendation:
           type: object
           description: Output of the gap router.
@@ -2664,6 +2731,36 @@ components:
             action: { type: string, enum: [continue, retry_practice, prerequisite_review, take_break] }
             topicId: { $ref: '#/components/schemas/Id' }
             message: { type: string }
+
+    TopicAssessmentStatus:
+      type: object
+      required: [topicId, questionCount, practice, mastery, dailyExercisesLeft]
+      properties:
+        topicId: { $ref: '#/components/schemas/Id' }
+        questionCount: { type: integer, description: Published question templates on the topic. }
+        practice:
+          type: object
+          required: [correct, required, openAttemptId]
+          properties:
+            correct: { type: integer, description: Practice answers right so far, over all sets. }
+            required: { type: integer, description: Needed before the mastery test unlocks. }
+            openAttemptId: { type: ['string', 'null'], format: uuid }
+        mastery:
+          type: object
+          required: [unlocked, openAttemptId, best]
+          properties:
+            unlocked: { type: boolean }
+            openAttemptId: { type: ['string', 'null'], format: uuid }
+            best:
+              type: ['object', 'null']
+              properties:
+                score: { type: number }
+                maxScore: { type: number }
+                passed: { type: boolean }
+                submittedAt: { type: string, format: date-time }
+        dailyExercisesLeft:
+          type: ['integer', 'null']
+          description: Practice answers left today on the free plan (Tashkent day); null with a paid plan.
 
     GamificationSummary:
       type: object

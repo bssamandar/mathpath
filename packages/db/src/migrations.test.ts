@@ -42,6 +42,10 @@ const expectedTables: TableName[] = [
   'parent_child_links',
   'processed_events',
   'question_template_versions',
+  'assessments',
+  'attempts',
+  'attempt_items',
+  'daily_usage',
   'question_templates',
   'refresh_tokens',
   'risk_events',
@@ -353,6 +357,60 @@ describe('question templates', () => {
           .execute(),
       ).rejects.toThrow(/check/i);
     }
+  });
+});
+
+describe('assessment constraints', () => {
+  async function start(userId: string) {
+    const assessment = newId();
+    await db
+      .insertInto('assessments')
+      .values({ id: assessment, type: 'practice', scope_type: 'topic', scope_id: newId() })
+      .execute();
+    const open = () =>
+      db
+        .insertInto('attempts')
+        .values({ id: newId(), user_id: userId, assessment_id: assessment, topic_id: null })
+        .execute();
+    return { assessment, open };
+  }
+
+  it('allows one open attempt per learner and assessment', async () => {
+    const user = await insertUser();
+    const { open } = await start(user);
+    await open();
+    await expect(open()).rejects.toThrow(/attempts_one_open/);
+  });
+
+  it('ties submitted_at to the submitted status', async () => {
+    const user = await insertUser();
+    const { assessment } = await start(user);
+    await expect(
+      db
+        .insertInto('attempts')
+        .values({
+          id: newId(),
+          user_id: user,
+          assessment_id: assessment,
+          topic_id: null,
+          status: 'submitted',
+        })
+        .execute(),
+    ).rejects.toThrow(/check/i);
+  });
+
+  it('rejects an unknown assessment type', async () => {
+    await expect(
+      db
+        .insertInto('assessments')
+        .values({
+          id: newId(),
+          type: 'quiz' as 'practice',
+          scope_type: 'topic',
+          scope_id: newId(),
+        })
+        .execute(),
+    ).rejects.toThrow(/check/i);
   });
 });
 

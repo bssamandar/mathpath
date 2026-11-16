@@ -3,6 +3,7 @@ import { cookies } from 'next/headers';
 import type { ReactNode } from 'react';
 import { I18nProvider } from '../components/i18n-provider';
 import { DEFAULT_LOCALE, isLocale, LOCALE_COOKIE } from '../lib/i18n';
+import 'katex/dist/katex.min.css';
 import './globals.css';
 
 export const metadata: Metadata = {

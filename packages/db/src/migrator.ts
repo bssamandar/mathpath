@@ -4,6 +4,7 @@ import * as m2026111502 from './migrations/2026111502_terms_acceptance';
 import * as m2026111601 from './migrations/2026111601_content';
 import * as m2026111602 from './migrations/2026111602_media';
 import * as m2026111603 from './migrations/2026111603_questions';
+import * as m2026111701 from './migrations/2026111701_assessment';
 
 /**
  * The ordered list of migrations. Names sort chronologically; each module
@@ -18,6 +19,7 @@ export const migrations: Record<string, Migration> = {
   '2026111601_content': m2026111601,
   '2026111602_media': m2026111602,
   '2026111603_questions': m2026111603,
+  '2026111701_assessment': m2026111701,
 };
 
 function migratorFor(db: Kysely<unknown>, list: Record<string, Migration>): Migrator {

@@ -30,12 +30,14 @@ export const learningSchema = z
         hintAfterMistakes: positiveInt,
         solutionAfterMistakes: positiveInt,
         minCorrectBeforeMasteryTest: positiveInt,
+        itemsPerSet: positiveInt.max(30),
       })
       .strict()
       .refine((p) => p.solutionAfterMistakes > p.hintAfterMistakes, {
         message: 'the full solution must come after the hint',
         path: ['solutionAfterMistakes'],
       }),
+    masteryTest: z.object({ items: positiveInt.max(40) }).strict(),
     gapRouting: z
       .object({
         maxDepth: positiveInt,
