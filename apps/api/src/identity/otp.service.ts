@@ -20,8 +20,12 @@ import { smsMessages } from './sms/messages';
 import type { RiskService } from '../risk/risk.service';
 import type { SmsBudget } from '../risk/sms-budget';
 
-/** Purposes supported so far; password reset and phone change follow. */
-export type OtpRequestPurpose = 'signup' | 'login';
+/**
+ * Purposes supported so far; password reset and phone change follow.
+ * `confirm_action` lets a signed-in parent prove possession of their phone
+ * for an important action, such as giving consent for a child (C-30).
+ */
+export type OtpRequestPurpose = 'signup' | 'login' | 'confirm_action';
 
 export interface OtpRequest {
   phone: string;
@@ -128,6 +132,7 @@ export class OtpService {
     let text: string | null = null;
     if (purpose === 'signup')
       text = hasAccount ? smsMessages.alreadyRegistered() : smsMessages.otpCode(code);
+    else if (purpose === 'confirm_action') text = smsMessages.confirmCode(code);
     else if (hasAccount) text = smsMessages.otpCode(code);
 
     if (text) {
@@ -151,9 +156,14 @@ export class OtpService {
   /**
    * Checks a code. Each wrong guess counts; after the configured number of
    * attempts the challenge is burned even for the right code.
+   * @param purposes - The purposes the caller accepts.
    * @throws ProblemException 401 with OTP_INVALID, OTP_EXPIRED or OTP_ATTEMPTS_EXCEEDED.
    */
-  async verify(challengeId: string, code: string): Promise<VerifiedOtp> {
+  async verify(
+    challengeId: string,
+    code: string,
+    purposes: readonly OtpRequestPurpose[],
+  ): Promise<VerifiedOtp> {
     const now = this.clock.now();
     const outcome = await this.db.transaction().execute(async (trx) => {
       const row = await trx
@@ -162,7 +172,10 @@ export class OtpService {
         .where('id', '=', challengeId)
         .forUpdate()
         .executeTakeFirst();
-      if (!row || row.consumed_at) return 'OTP_INVALID' as const;
+      // A code requested for one purpose never works for another.
+      if (!row || row.consumed_at || !purposes.includes(row.purpose as OtpRequestPurpose)) {
+        return 'OTP_INVALID' as const;
+      }
       if (row.expires_at <= now) return 'OTP_EXPIRED' as const;
       if (row.attempts >= this.rules.maxAttemptsPerChallenge)
         return 'OTP_ATTEMPTS_EXCEEDED' as const;

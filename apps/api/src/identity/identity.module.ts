@@ -91,7 +91,17 @@ import { TokenService } from './token.service';
         clock: Clock,
         rules: AppConfig,
         audit: AuditService,
-      ) => new SessionService(db, tokens, keys, revoked, clock, rules.auth.tokens, audit),
+      ) =>
+        new SessionService(
+          db,
+          tokens,
+          keys,
+          revoked,
+          clock,
+          rules.auth.tokens,
+          audit,
+          rules.limits.sessions.maxConcurrentPerStudent,
+        ),
     },
     {
       provide: OtpService,
@@ -162,5 +172,7 @@ import { TokenService } from './token.service';
     },
     { provide: APP_GUARD, useClass: AuthGuard },
   ],
+  // Used by the family module for child accounts, consent and child sign-in.
+  exports: [SessionService, OtpService, PasswordService, SmsSender],
 })
 export class IdentityModule {}

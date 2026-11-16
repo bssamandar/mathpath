@@ -66,7 +66,7 @@ export class AuthService {
     code: string,
     client: ClientContext,
   ): Promise<OtpVerifyResult> {
-    const verified = await this.otp.verify(challengeId, code);
+    const verified = await this.otp.verify(challengeId, code, ['signup', 'login']);
     const user = await this.liveUserByPhone(verified.phone);
 
     if (verified.purpose === 'signup') {
@@ -234,6 +234,20 @@ export class AuthService {
     void this.sms.send(phone, smsMessages.accountLocked()).catch((error: unknown) => {
       this.logger.error(`Lock notice to ${maskPhone(phone)} failed: ${(error as Error).message}`);
     });
+  }
+
+  /** @throws ProblemException 400 unless `phone` is the user's own number. */
+  async assertOwnPhone(userId: string, phone: string): Promise<void> {
+    const user = await this.db
+      .selectFrom('users')
+      .select('phone_e164')
+      .where('id', '=', userId)
+      .executeTakeFirst();
+    if (user?.phone_e164 !== phone) {
+      throw new ProblemException(400, 'PHONE_MISMATCH', 'Use the phone number of your account.', {
+        errors: [{ field: 'phone', message: 'must be the phone number of the signed-in account' }],
+      });
+    }
   }
 
   private assertActive(status: string): void {

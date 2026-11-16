@@ -6,6 +6,10 @@
 export const smsMessages = {
   otpCode: (code: string): string =>
     `MathPath kodi: ${code}. Uni hech kimga bermang. / Kod: ${code}. Никому не сообщайте.`,
+  confirmCode: (code: string): string =>
+    `MathPath tasdiqlash kodi: ${code}. Uni hech kimga bermang. / Код подтверждения: ${code}.`,
+  childPinLocked: (): string =>
+    'MathPath: farzandingiz profiliga ko‘p marta noto‘g‘ri PIN kiritildi, profil vaqtincha bloklandi. / Профиль ребёнка временно заблокирован из-за неверных PIN.',
   alreadyRegistered: (): string =>
     'Bu raqam MathPath’da ro‘yxatdan o‘tgan. Kirish sahifasidan foydalaning. / Номер уже зарегистрирован, войдите в аккаунт.',
   accountLocked: (): string =>

@@ -5,6 +5,7 @@ import { RedisModule } from './redis/redis.module';
 import { RiskModule } from './risk/risk.module';
 import { AppConfigModule } from './config/config.module';
 import { DatabaseModule } from './database/database.module';
+import { FamilyModule } from './family/family.module';
 import { HealthModule } from './health/health.module';
 import { IdentityModule } from './identity/identity.module';
 
@@ -22,6 +23,7 @@ import { IdentityModule } from './identity/identity.module';
     RiskModule,
     HealthModule,
     IdentityModule,
+    FamilyModule,
   ],
 })
 export class AppModule {}

@@ -116,6 +116,7 @@ export const limitsSchema = z
         loginFailuresPerAccount: window,
         loginFailuresPerIpPrefix: window,
         childPinFailures: window,
+        childLoginFailuresPerFamily: window,
         accountLock: window,
       })
       .strict(),
