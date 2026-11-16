@@ -6,3 +6,8 @@ questionTypes: [single_choice, multiple_choice, numeric, formula, matching, orde
 video:
   minDurationSeconds: 120
   maxDurationSeconds: 600
+# Four-eyes rule (C-18): nobody approves a version they wrote. While the team
+# has a single admin, an admin may approve their own version so a typo can be
+# fixed; every such approval is marked `selfReview: true` in the audit log.
+# Set to false once a second person can review.
+adminSelfReview: true

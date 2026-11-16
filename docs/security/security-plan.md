@@ -65,11 +65,16 @@ Level 1, is too weak for children's data.
 | `progress:read` (object-checked)           | own     | own children | consented class members |        |          | ✅ (audited) |                                                       |
 | `family:*`, `billing:*`, `privacy:request` |         | ✅           |                         |        |          |              |                                                       |
 | `classroom:manage`                         |         |              | ✅                      |        |          |              |                                                       |
-| `content:author`                           |         |              |                         | ✅     | ✅       |              |                                                       |
-| `content:review` (not own)                 |         |              |                         |        | ✅       |              |                                                       |
+| `content:author`                           |         |              |                         | ✅     | ✅       | ✅           |                                                       |
+| `content:review` (not own)                 |         |              |                         |        | ✅       | ✅ (own¹)    |                                                       |
 | `content:publish`                          |         |              |                         |        | ✅       | ✅           |                                                       |
 | `admin:users`, `admin:risk`                |         |              |                         |        |          | ✅           | read only (with the support console; none until then) |
 | `admin:billing`, `admin:audit`             |         |              |                         |        |          | ✅           |                                                       |
+
+¹ An admin may approve their own version only while `adminSelfReview` is on in
+`config/content.yaml` (decided 2026-11-16 for a one-person team). Each such
+approval is marked `selfReview: true` in the audit log. Turn it off once a
+second person can review; the four-eyes rule then applies to admins too.
 
 ---
 

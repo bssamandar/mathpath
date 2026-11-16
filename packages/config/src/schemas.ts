@@ -233,6 +233,8 @@ export const contentSchema = z
       )
       .min(1),
     video: z.object({ minDurationSeconds: positiveInt, maxDurationSeconds: positiveInt }).strict(),
+    // Four-eyes exception (C-18): an admin may approve their own version.
+    adminSelfReview: z.boolean(),
   })
   .strict()
   .refine((c) => c.uiLocales.includes(c.defaultLocale), {

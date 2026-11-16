@@ -62,6 +62,9 @@ project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   topic, published versions frozen by a database trigger). Catalogue API in the
   reader's language; free topics open, paid topics answer 402 until billing.
   `pnpm db:seed` loads three demo grade 5 fraction topics in Uzbek and Russian.
+  Admins can author and review content; while `adminSelfReview` is on
+  (`config/content.yaml`), an admin may approve their own version, marked
+  `selfReview` in the audit log.
 - `config/auth.yaml` for token lifetimes, OTP resend delay and password rules.
 - Migration `2026111502_terms_acceptance`: the terms version each user accepted.
 - Errors are returned as RFC 9457 problem details with a stable `code` and request ID.
