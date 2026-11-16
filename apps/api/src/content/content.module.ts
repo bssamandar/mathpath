@@ -12,6 +12,7 @@ import { BUSINESS_RULES } from '../config/tokens';
 import { DB } from '../database/database.module';
 import { CatalogueService, Entitlements, NoEntitlements } from './catalogue.service';
 import { CatalogueController, StudioController } from './content.controller';
+import { QuestionStudioService } from './question-studio.service';
 import { StudioService } from './studio.service';
 
 @Module({
@@ -30,6 +31,12 @@ import { StudioService } from './studio.service';
       inject: [DB, AuditService, Clock, BUSINESS_RULES],
       useFactory: (db: Kysely<Database>, audit: AuditService, clock: Clock, rules: AppConfig) =>
         new StudioService(db, audit, clock, rules.content),
+    },
+    {
+      provide: QuestionStudioService,
+      inject: [DB, AuditService, Clock, BUSINESS_RULES],
+      useFactory: (db: Kysely<Database>, audit: AuditService, clock: Clock, rules: AppConfig) =>
+        new QuestionStudioService(db, audit, clock, rules.content),
     },
   ],
   exports: [CatalogueService, Entitlements],

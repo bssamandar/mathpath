@@ -96,6 +96,17 @@ project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   token after a long pause. Activities, practice and tests show a placeholder
   until the question engine (6.4). The CSP allows the storage origin
   (`MEDIA_ORIGIN`) for segments and subtitles.
+- `@mathpath/questions`: question engine with exact rational arithmetic, a small
+  expression language with a fixed function list, seeded random variables,
+  constraints, distractors and answer checking (decimal comma, mixed numbers,
+  simplified fractions). Templates are validated by sampling before review
+  (ADR-0011).
+- Migration `2026111603_questions`: versioned question templates with the same
+  draft → review → publish workflow and frozen published versions.
+- Studio API for question templates: list/create per topic, versions, draft save
+  with ETag, preview with sample generation; submit/review/publish reuse the
+  content routes.
+- Eight demo question templates across the three demo topics.
 - Errors are returned as RFC 9457 problem details with a stable `code` and request ID.
 - CI (format, lint, typecheck, tests with an 80% coverage gate, build) and security
   scanning (gitleaks, pnpm audit, OSV-Scanner, Semgrep, CodeQL); Renovate.

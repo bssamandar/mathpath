@@ -463,3 +463,4 @@ provider" is written in Phase 6, once the code exists.
 | [0007](adr/0007-outbox-domain-events.md)        | Transactional outbox + BullMQ                                            | RabbitMQ/Kafka                         |
 | [0008](adr/0008-payment-provider-adapters.md)   | Provider adapter interface; tiyin integers; three-level idempotency      | Payment aggregator only                |
 | [0009](adr/0009-nextjs-two-frontends.md)        | Next.js, separate `web` and `studio` apps                                | Single SPA (Vite)                      |
+| [0011](adr/0011-own-expression-engine.md)       | Own expression engine for question templates                             | Restricted math.js                     |

@@ -297,6 +297,40 @@ export interface TopicVersionsTable {
   updated_at: ColumnType<Date, Date | undefined, Date>;
 }
 
+export type QuestionType =
+  | 'single_choice'
+  | 'multiple_choice'
+  | 'numeric'
+  | 'formula'
+  | 'matching'
+  | 'ordering';
+
+export interface QuestionTemplatesTable {
+  id: string;
+  topic_id: string;
+  external_ref: string | null;
+  created_by: string;
+  created_at: CreatedAt;
+  published_version_id: string | null;
+}
+
+export interface QuestionTemplateVersionsTable {
+  id: string;
+  template_id: string;
+  version_no: number;
+  status: ColumnType<VersionStatus, VersionStatus | undefined, VersionStatus>;
+  type: QuestionType;
+  difficulty: number;
+  skills: ColumnType<string[], string[] | undefined, string[]>;
+  /** Template body; validated by @mathpath/questions (schema doc §4.2). Server-only. */
+  body: Json<Record<string, unknown>>;
+  author_id: string;
+  content_hash: string;
+  published_at: NullableTimestamp;
+  created_at: CreatedAt;
+  updated_at: ColumnType<Date, Date | undefined, Date>;
+}
+
 export interface TopicPrerequisitesTable {
   topic_id: string;
   prerequisite_id: string;
@@ -386,6 +420,8 @@ export interface Database {
   topic_prerequisites: TopicPrerequisitesTable;
   topic_mappings: TopicMappingsTable;
   content_reviews: ContentReviewsTable;
+  question_templates: QuestionTemplatesTable;
+  question_template_versions: QuestionTemplateVersionsTable;
   media_assets: MediaAssetsTable;
   media_keys: MediaKeysTable;
 }

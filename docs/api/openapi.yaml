@@ -1563,13 +1563,34 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
         '412': { $ref: '#/components/responses/PreconditionFailed' }
 
-  /studio/question-templates/{templateId}/versions:
+  /studio/topics/{topicId}/question-templates:
     parameters:
-      - { name: templateId, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } }
+      - $ref: '#/components/parameters/TopicId'
+    get:
+      tags: [Studio]
+      operationId: listQuestionTemplates
+      summary: Question templates of a topic, each with its newest version.
+      x-permission: content:author
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/QuestionTemplateSummary' }
+        '404': { $ref: '#/components/responses/NotFound' }
     post:
       tags: [Studio]
-      operationId: saveQuestionDraft
-      summary: Create or update a draft of a question template.
+      operationId: createQuestionTemplate
+      summary: Create a question template with its first draft.
+      description: >
+        The body must have the right shape (400 otherwise). Whether it generates
+        items is checked on submit and in the preview, so work in progress can be saved.
       x-permission: content:author
       requestBody:
         required: true
@@ -1578,30 +1599,22 @@ paths:
             schema: { $ref: '#/components/schemas/QuestionTemplateInput' }
       responses:
         '201':
-          description: Saved.
+          description: Created.
+          headers:
+            ETag: { schema: { type: string }, description: Send as If-Match when saving. }
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/ContentVersionSummary' }
-        '422': { $ref: '#/components/responses/Unprocessable' }
+              schema: { $ref: '#/components/schemas/QuestionTemplateVersion' }
+        '404': { $ref: '#/components/responses/NotFound' }
 
-  /studio/question-templates/preview:
-    post:
+  /studio/question-templates/{templateId}/versions:
+    parameters:
+      - { name: templateId, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } }
+    get:
       tags: [Studio]
-      operationId: previewQuestion
-      summary: Generate sample instances (with answers) for authoring.
-      description: Runs the sandboxed engine with N random seeds; reports constraint failures.
+      operationId: listQuestionVersions
+      summary: Version history of a question template.
       x-permission: content:author
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [template]
-              properties:
-                template: { $ref: '#/components/schemas/QuestionTemplateInput' }
-                samples: { type: integer, minimum: 1, maximum: 20, default: 5 }
-                locale: { $ref: '#/components/schemas/Locale' }
       responses:
         '200':
           description: OK
@@ -1609,18 +1622,113 @@ paths:
             application/json:
               schema:
                 type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/ContentVersionSummary' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [Studio]
+      operationId: createQuestionDraft
+      summary: Create a new draft (copied from the latest version).
+      description: A template has at most one open version; another one returns 409 `DRAFT_EXISTS`.
+      x-permission: content:author
+      responses:
+        '201':
+          description: Draft created.
+          headers:
+            ETag: { schema: { type: string }, description: Send as If-Match when saving. }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/QuestionTemplateVersion' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /studio/question-template-versions/{versionId}:
+    parameters:
+      - $ref: '#/components/parameters/VersionId'
+    get:
+      tags: [Studio]
+      operationId: getQuestionVersion
+      summary: Full question template version, body included (staff only).
+      x-permission: content:author
+      responses:
+        '200':
+          description: OK
+          headers:
+            ETag: { schema: { type: string }, description: Send as If-Match when saving. }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/QuestionTemplateVersion' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [Studio]
+      operationId: saveQuestionDraft
+      summary: Save a draft. Only drafts in `draft` or `changes_requested` can be edited.
+      x-permission: content:author
+      parameters:
+        - { name: If-Match, in: header, required: true, schema: { type: string }, description: ETag of the version being edited (prevents lost updates). }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/QuestionTemplateInput' }
+      responses:
+        '200':
+          description: Saved.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/QuestionTemplateVersion' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '412': { $ref: '#/components/responses/PreconditionFailed' }
+
+  /studio/question-templates/preview:
+    post:
+      tags: [Studio]
+      operationId: previewQuestion
+      summary: Generate sample items (with answers) for authoring.
+      description: >
+        Runs the sandboxed engine with random seeds. A broken template is not an
+        error: the problem comes back in `warnings` with its field, and so do
+        missing translations in the required content locales.
+      x-permission: content:author
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type, body]
+              additionalProperties: false
+              properties:
+                type: { $ref: '#/components/schemas/QuestionType' }
+                body: { $ref: '#/components/schemas/QuestionTemplateBody' }
+                samples: { type: integer, minimum: 1, maximum: 20, default: 5 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [samples, warnings]
                 properties:
                   samples:
                     type: array
                     items:
                       type: object
                       properties:
-                        params: { type: object }
-                        instance: { $ref: '#/components/schemas/QuestionInstance' }
-                        answer: { type: object }
+                        params: { type: object, additionalProperties: { type: string } }
+                        instance: { type: object, description: 'What a learner would see: stem per locale, input kind and choices.' }
+                        answer: { type: object, description: The answer key the server keeps. }
                   warnings:
                     type: array
-                    items: { type: string }
+                    items:
+                      type: object
+                      required: [field, message]
+                      properties:
+                        field: { type: string }
+                        message: { type: string }
 
   /studio/versions/{versionId}/submit:
     parameters:
@@ -1632,7 +1740,10 @@ paths:
       description: |
         Refused with 422 `CONTENT_INCOMPLETE` (listing the fields) when a title,
         summary or step prompt lacks a required content locale
-        (`config/content.yaml`), or when the lesson has no steps.
+        (`config/content.yaml`), or when the lesson has no steps. A question
+        template must also generate valid items: the engine runs it with many
+        seeds and reports the first broken field (for example
+        `constraints` when no values meet them).
       x-permission: content:author
       responses:
         '200':
@@ -2772,28 +2883,95 @@ components:
 
     QuestionTemplateInput:
       type: object
-      description: See docs/database-schema.md §4.2 for the full body format.
-      required: [type, difficulty, variables, stem, answer]
+      required: [type, difficulty, body]
+      additionalProperties: false
       properties:
-        type: { $ref: '#/components/schemas/QuestionType' }
+        type:
+          type: string
+          enum: [numeric, single_choice, multiple_choice]
+          description: The types the engine generates today; formula, matching and ordering come later.
         difficulty: { type: integer, minimum: 1, maximum: 5 }
         skills:
           type: array
-          items: { type: string }
-        variables: { type: object }
+          maxItems: 10
+          items: { type: string, pattern: '^[a-z][a-z0-9_]{0,39}$' }
+        externalRef: { type: string, maxLength: 64, description: The author's own label. }
+        body: { $ref: '#/components/schemas/QuestionTemplateBody' }
+
+    QuestionTemplateBody:
+      type: object
+      description: >
+        Server-only template body (docs/database-schema.md §4.2). Expressions use
+        the engine's language: numbers, variables, + - * / ^, comparisons, && || !,
+        and the functions abs, floor, ceil, round, min, max, gcd, lcm, mod,
+        numerator and denominator. Arithmetic is exact (fractions, not floats).
+        `{expression}` in a text is replaced by its value.
+      required: [stem, answer]
+      additionalProperties: false
+      properties:
+        variables:
+          type: object
+          description: 'In order; each may use the ones before it. `{"int": [lo, hi]}`, `{"choice": [...]}` or `{"expr": "..."}`.'
+          additionalProperties: { type: object }
         constraints:
           type: array
-          items: { type: string, maxLength: 200 }
+          maxItems: 20
+          items: { type: string, maxLength: 300 }
         stem: { $ref: '#/components/schemas/LocalizedText' }
-        answer: { type: object }
-        choices: { type: array, items: { type: object } }
+        answer:
+          type: object
+          description: >
+            `number` (expr, decimals), `fraction` (expr, accept, requireSimplified),
+            `choice` (expr, display; with distractors) or `choices` (listed options
+            with `correct`).
+          required: [kind]
+          properties:
+            kind: { type: string, enum: [number, fraction, choice, choices] }
         distractors:
           type: array
-          items: { type: string }
+          maxItems: 7
+          items: { type: string, maxLength: 300 }
         hints:
           type: array
+          maxItems: 5
           items: { $ref: '#/components/schemas/LocalizedText' }
         solution: { $ref: '#/components/schemas/LocalizedText' }
+
+    QuestionTemplateVersion:
+      allOf:
+        - $ref: '#/components/schemas/ContentVersionSummary'
+        - $ref: '#/components/schemas/QuestionTemplateInput'
+        - type: object
+          required: [templateId, topicId, etag]
+          properties:
+            templateId: { $ref: '#/components/schemas/Id' }
+            topicId: { $ref: '#/components/schemas/Id' }
+            etag: { type: string }
+            reviews:
+              type: array
+              items:
+                type: object
+                properties:
+                  reviewerId: { $ref: '#/components/schemas/Id' }
+                  decision: { type: string }
+                  comments: { type: array, items: { type: object } }
+                  createdAt: { type: string, format: date-time }
+
+    QuestionTemplateSummary:
+      type: object
+      required: [id, latest]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        externalRef: { type: [string, 'null'] }
+        publishedVersionId: { oneOf: [{ $ref: '#/components/schemas/Id' }, { type: 'null' }] }
+        latest:
+          allOf:
+            - $ref: '#/components/schemas/ContentVersionSummary'
+            - type: object
+              properties:
+                type: { $ref: '#/components/schemas/QuestionType' }
+                difficulty: { type: integer }
+                stem: { $ref: '#/components/schemas/LocalizedText' }
 
     StudioTree:
       type: object

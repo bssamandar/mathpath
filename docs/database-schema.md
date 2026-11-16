@@ -678,9 +678,20 @@ These shapes are validated with Zod schemas in `packages/question-engine` and
 }
 ```
 
-Expressions are evaluated by a **sandboxed expression evaluator** (a math.js
-instance with a restricted function list). There is no `eval`, and authors can't
-run arbitrary code.
+Expressions are evaluated by the **sandboxed expression engine** in
+`@mathpath/questions` (ADR-0011): exact fractions, a fixed grammar and a fixed
+function list (`abs`, `floor`, `ceil`, `round`, `min`, `max`, `gcd`, `lcm`,
+`mod`, `numerator`, `denominator`). There is no `eval`, and authors can't run
+arbitrary code. Variables may read each other in any order the author writes
+them; the engine sorts them by what they read (jsonb does not keep key order).
+`{expression}` in a text is replaced by its value, so `\\frac{{a}}{{d}}` becomes
+`\\frac{3}{7}`.
+
+Answer kinds: `number` (`expr`, optional `decimals` for values that do not end),
+`fraction` (`expr`, `accept`: `equivalent` / `mixed_number` / `decimal`,
+`requireSimplified`), `choice` (a generated single choice from `expr` and
+`distractors`) and `choices` (listed options with `correct`). The engine
+generates `numeric`, `single_choice` and `multiple_choice` today.
 
 ---
 
