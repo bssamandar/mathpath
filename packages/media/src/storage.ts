@@ -16,6 +16,7 @@ import { pipeline } from 'node:stream/promises';
 import {
   CreateBucketCommand,
   HeadBucketCommand,
+  PutBucketCorsCommand,
   GetObjectCommand,
   HeadObjectCommand,
   NotFound,
@@ -137,14 +138,34 @@ export class S3ObjectStore implements ObjectStore {
     await pipeline(out.Body as Readable, createWriteStream(filePath, { mode: 0o600 }));
   }
 
-  /** Creates the bucket if it is missing (local development and CI). */
-  async ensureBucket(): Promise<void> {
+  /**
+   * Creates the bucket if it is missing and lets the given browser origins reach
+   * it (local development and CI; production buckets are provisioned, Phase 7).
+   */
+  async ensureBucket(browserOrigins: readonly string[] = []): Promise<void> {
     try {
       await this.internal.send(new HeadBucketCommand({ Bucket: this.settings.bucket }));
     } catch (error) {
       if (!isNotFound(error)) throw error;
       await this.internal.send(new CreateBucketCommand({ Bucket: this.settings.bucket }));
     }
+    if (browserOrigins.length === 0) return;
+    // The studio PUTs uploads and the player GETs segments straight from storage.
+    await this.internal.send(
+      new PutBucketCorsCommand({
+        Bucket: this.settings.bucket,
+        CORSConfiguration: {
+          CORSRules: [
+            {
+              AllowedOrigins: [...browserOrigins],
+              AllowedMethods: ['GET', 'HEAD', 'PUT'],
+              AllowedHeaders: ['content-type', 'range'],
+              MaxAgeSeconds: 3600,
+            },
+          ],
+        },
+      }),
+    );
   }
 
   /** Closes the HTTP connection pools. */

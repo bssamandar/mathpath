@@ -303,6 +303,77 @@ describe('studio workflow (C-18)', () => {
     expect(res.body.errors).toContainEqual({ field: 'title', message: 'missing ru text' });
   });
 
+  it('will not send a lesson to review before its video is ready', async () => {
+    const { free } = await catalogue();
+    const author = await userWith(['author']);
+    const video = newId();
+    await t.db
+      .insertInto('media_assets')
+      .values({
+        id: video,
+        kind: 'video',
+        content_type: 'video/mp4',
+        size_bytes: 10,
+        source_key: `sources/${video}`,
+        status: 'processing',
+        uploaded_by: author.id,
+      })
+      .execute();
+    const draft = await http()
+      .post(`/api/v1/studio/topics/${free}/versions`)
+      .set('Authorization', author.auth)
+      .expect(201);
+    await http()
+      .put(`/api/v1/studio/topic-versions/${draft.body.id}`)
+      .set('Authorization', author.auth)
+      .set('If-Match', draft.headers.etag as string)
+      .send({ ...lesson, steps: [{ type: 'video', mediaId: video }, ...lesson.steps] })
+      .expect(200);
+    const res = await http()
+      .post(`/api/v1/studio/versions/${draft.body.id}/submit`)
+      .set('Authorization', author.auth)
+      .expect(422);
+    expect(res.body.errors).toEqual([
+      { field: 'steps/0/mediaId', message: 'video is missing or not ready yet' },
+    ]);
+
+    await t.db
+      .updateTable('media_assets')
+      .set({ status: 'ready', hls_manifest_key: `hls/${video}/master.m3u8`, duration_s: 300 })
+      .where('id', '=', video)
+      .execute();
+    await http()
+      .post(`/api/v1/studio/versions/${draft.body.id}/submit`)
+      .set('Authorization', author.auth)
+      .expect(200);
+  });
+
+  it('shows the whole tree to authors, drafts included', async () => {
+    const { course, free, paid } = await catalogue();
+    const author = await userWith(['author']);
+    await http()
+      .post(`/api/v1/studio/topics/${free}/versions`)
+      .set('Authorization', author.auth)
+      .expect(201);
+    const res = await http()
+      .get('/api/v1/studio/tree')
+      .set('Authorization', author.auth)
+      .expect(200);
+    const courseNode = res.body.tracks[0].courses[0];
+    expect(courseNode).toMatchObject({ id: course, status: 'published', grade: 5 });
+    const topics = courseNode.chapters[0].topics;
+    expect(topics.map((t: { id: string }) => t.id)).toEqual([free, paid]);
+    expect(topics[0]).toMatchObject({
+      isFree: true,
+      publishedVersionId: null,
+      latest: { versionNo: 1, status: 'draft' },
+    });
+    expect(topics[1]).toMatchObject({ isFree: false, latest: null, title: {} });
+
+    const learner = await userWith(['student']);
+    await http().get('/api/v1/studio/tree').set('Authorization', learner.auth).expect(403);
+  });
+
   it('rejects malformed steps when saving', async () => {
     const { free } = await catalogue();
     const author = await userWith(['author']);

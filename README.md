@@ -69,7 +69,8 @@ Then open:
 
 - API health check: <http://localhost:4000/api/v1/health>
 - Student and parent app: <http://localhost:3000>
-- Studio: <http://localhost:3001>
+- Studio: <http://localhost:3001>. Staff accounts need an authenticator app
+  (2FA is set up on first sign-in); `pnpm db:seed` loads demo lessons to edit.
 
 Stop the local services with `pnpm services:down`.
 

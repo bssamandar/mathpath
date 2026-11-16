@@ -10,8 +10,18 @@ describe('media environment', () => {
       S3_BUCKET: 'mathpath-media',
       S3_FORCE_PATH_STYLE: true,
       MEDIA_KEY_SECRET: undefined,
+      MEDIA_BROWSER_ORIGINS: ['http://localhost:3000', 'http://localhost:3001'],
     });
     expect(objectStoreFromEnv(env)).toBeNull();
+  });
+
+  it('reads browser origins as a comma-separated list of URLs', () => {
+    const parse = (value: string) => mediaEnvSchema.safeParse({ MEDIA_BROWSER_ORIGINS: value });
+    expect(
+      parse(' https://mathpath.uz, https://studio.mathpath.uz ,').data?.MEDIA_BROWSER_ORIGINS,
+    ).toEqual(['https://mathpath.uz', 'https://studio.mathpath.uz']);
+    expect(parse('').data?.MEDIA_BROWSER_ORIGINS).toEqual([]);
+    expect(parse('not-a-url').success).toBe(false);
   });
 
   it('lists the settings production needs', () => {

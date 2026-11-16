@@ -123,7 +123,7 @@ export class MediaModule implements OnApplicationBootstrap, OnApplicationShutdow
   /** Locally the bucket is created on start; in production it is provisioned (Phase 7). */
   async onApplicationBootstrap(): Promise<void> {
     if (this.env.NODE_ENV !== 'production' && this.store instanceof S3ObjectStore) {
-      await this.store.ensureBucket();
+      await this.store.ensureBucket(this.env.MEDIA_BROWSER_ORIGINS);
     }
   }
 
