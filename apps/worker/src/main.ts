@@ -1,10 +1,11 @@
 import 'reflect-metadata';
 import type { AppConfig } from '@mathpath/config';
-import { createDb } from '@mathpath/db';
+import { closeFinishedLeagues, createDb } from '@mathpath/db';
 import { objectStoreFromEnv, vaultFromEnv } from '@mathpath/media';
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { parseWorkerEnv } from './env';
+import { startLeagueClose } from './leagues/close-job';
 import { startTranscodeConsumer } from './transcode/consumer';
 import { Transcoder } from './transcode/transcoder';
 import { BUSINESS_RULES, WorkerModule } from './worker.module';
@@ -25,15 +26,23 @@ async function bootstrap(): Promise<void> {
     concurrency: env.TRANSCODE_CONCURRENCY,
   });
 
+  const leagues = await startLeagueClose(
+    () => closeFinishedLeagues(db, rules.gamification.leagues, new Date()),
+    { redisUrl: env.REDIS_URL },
+  );
+
   const stop = async () => {
     // Let the running encode finish its current step, then close cleanly.
     await consumer.close();
+    await leagues.stop();
     await db.destroy();
     await app.close();
   };
   process.once('SIGTERM', () => void stop());
   process.once('SIGINT', () => void stop());
-  logger.log(`Worker started: ${consumer.name} (concurrency ${env.TRANSCODE_CONCURRENCY}).`);
+  logger.log(
+    `Worker started: ${consumer.name} (concurrency ${env.TRANSCODE_CONCURRENCY}), ${leagues.worker.name}.`,
+  );
 }
 
 void bootstrap();

@@ -1,6 +1,15 @@
 export { createDb, type CreateDbOptions } from './client';
 export { newId } from './ids';
 export {
+  closeFinishedLeagues,
+  gradeBand,
+  type LeagueRules,
+  leagueOutcome,
+  leagueWeekEnd,
+  leagueWeekOf,
+  leagueZones,
+} from './leagues';
+export {
   MigrationError,
   migrateDown,
   migrateToLatest,

@@ -164,6 +164,12 @@ project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   freezes; badges; three daily quests from config. `GET /me/gamification`; the
   answer and the test result return what they earned. The student home shows
   level, streak, quests and badges, and answers show "+10 XP".
+- Weekly leagues: children with the parent's leaderboard consent join this
+  week's league (about 30 learners of the same tier and grade band) with
+  their first XP; standings show nicknames only; the worker closes each week
+  on Monday 00:05 Tashkent time and moves the top places up and the last ones
+  down through five tiers. `GET /leagues/current` and a league page in the
+  web app.
 - Errors are returned as RFC 9457 problem details with a stable `code` and request ID.
 - CI (format, lint, typecheck, tests with an 80% coverage gate, build) and security
   scanning (gitleaks, pnpm audit, OSV-Scanner, Semgrep, CodeQL); Renovate.

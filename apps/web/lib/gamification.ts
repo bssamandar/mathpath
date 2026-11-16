@@ -40,3 +40,37 @@ export function percentOf(progress: number, target: number): number {
   if (target <= 0) return 0;
   return Math.max(0, Math.min(100, Math.round((progress / target) * 100)));
 }
+
+/** GET /leagues/current (UX S8). */
+export interface LeagueView {
+  status: 'active' | 'not_joined' | 'off';
+  weekStart: string;
+  endsAt: string;
+  tier: number;
+  tiers: number;
+  zones: { up: number; down: number };
+  standings: {
+    rank: number;
+    nickname: string;
+    avatarCode: string | null;
+    weeklyXp: number;
+    isMe: boolean;
+  }[];
+  lastWeek: { tier: number; rank: number; outcome: 'promoted' | 'stayed' | 'demoted' } | null;
+}
+
+/** Whole days left until the week ends, counting a started day as one. */
+export function daysLeft(endsAt: string, now: Date): number {
+  return Math.max(0, Math.ceil((Date.parse(endsAt) - now.getTime()) / (24 * 60 * 60 * 1000)));
+}
+
+/** Whether a rank is in the promotion or demotion zone. */
+export function zoneOf(
+  rank: number,
+  members: number,
+  zones: LeagueView['zones'],
+): 'up' | 'down' | null {
+  if (rank <= zones.up) return 'up';
+  if (rank > members - zones.down) return 'down';
+  return null;
+}

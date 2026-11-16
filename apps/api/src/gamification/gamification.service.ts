@@ -12,6 +12,7 @@ import { type Database, newId, type XpReason } from '@mathpath/db';
 import { type Kysely, sql, type Transaction } from 'kysely';
 import { tashkentDay } from '../assessment/policy';
 import type { Clock } from '../common/clock';
+import type { LeaguesService } from './leagues.service';
 import { advanceStreak, BADGES, type GamificationRules, levelFor, visibleStreak } from './rules';
 
 type QuestMetric = GamificationRules['quests'][number]['metric'];
@@ -45,6 +46,7 @@ export class GamificationService {
     private readonly db: Kysely<Database>,
     private readonly clock: Clock,
     private readonly rules: GamificationRules,
+    private readonly leagues: LeaguesService,
   ) {}
 
   /**
@@ -232,6 +234,7 @@ export class GamificationService {
       .where('user_id', '=', userId)
       .execute();
     earned.xp += amount;
+    await this.leagues.addXp(trx, userId, amount);
     // Quest XP does not count towards the XP quest, or quests would feed themselves.
     if (reason !== 'quest_completed') await this.progress(trx, userId, 'xp', amount, earned);
     return amount;

@@ -510,7 +510,33 @@ export interface UserStatsTable {
   longest_streak: ColumnType<number, number | undefined, number>;
   last_active_day: ColumnType<string | null, string | null | undefined, string | null>;
   streak_freezes: ColumnType<number, number | undefined, number>;
+  /** The league tier the learner joins next week (6.6b). */
+  league_tier: ColumnType<number, number | undefined, number>;
   updated_at: ColumnType<Date, Date | undefined, Date>;
+}
+
+export interface LeaguesTable {
+  id: string;
+  /** Monday of the Tashkent week, `YYYY-MM-DD`. */
+  week_start: string;
+  tier: number;
+  /** Grade band index from config (`leagues.gradeBands`). */
+  band: number;
+  cohort: number;
+  closed_at: NullableTimestamp;
+  created_at: CreatedAt;
+}
+
+export type LeagueOutcome = 'promoted' | 'stayed' | 'demoted';
+
+export interface LeagueMembersTable {
+  league_id: string;
+  user_id: string;
+  week_start: string;
+  weekly_xp: ColumnType<number, number | undefined, number>;
+  joined_at: CreatedAt;
+  final_rank: ColumnType<number | null, number | null | undefined, number | null>;
+  outcome: ColumnType<LeagueOutcome | null, LeagueOutcome | null | undefined, LeagueOutcome | null>;
 }
 
 export interface UserBadgesTable {
@@ -728,6 +754,8 @@ export interface Database {
   user_stats: UserStatsTable;
   user_badges: UserBadgesTable;
   user_quests: UserQuestsTable;
+  leagues: LeaguesTable;
+  league_members: LeagueMembersTable;
 }
 
 export type TableName = keyof Database;

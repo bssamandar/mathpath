@@ -748,3 +748,61 @@ section.done {
   background: var(--color-muted-surface);
   font-size: 0.875rem;
 }
+
+/* ── League (UX S8): zones in neutral colours, the learner highlighted ── */
+.league-head h2 {
+  margin-bottom: var(--space);
+}
+.standings {
+  list-style: none;
+  padding: 0;
+  margin: calc(var(--space) * 4) 0;
+  display: grid;
+  gap: calc(var(--space) * 2);
+}
+.standings li {
+  display: grid;
+  grid-template-columns: 2rem 2.5rem 1fr auto;
+  align-items: center;
+  gap: calc(var(--space) * 2);
+  min-height: var(--target-min);
+  padding: calc(var(--space) * 2) calc(var(--space) * 3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+}
+.standings li.zone-up {
+  border-left: 4px solid var(--color-primary);
+}
+.standings li.zone-down {
+  border-left: 4px solid var(--color-muted-text);
+}
+.standings li.me {
+  background: var(--color-muted-surface);
+  font-weight: 700;
+  outline: 2px solid var(--color-primary);
+}
+.standings .rank {
+  font-weight: 700;
+  text-align: center;
+}
+.standings .avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 50%;
+  background: var(--color-primary);
+  color: var(--color-primary-text);
+  font-weight: 700;
+}
+.standings .name {
+  overflow-wrap: anywhere;
+}
+.standings .xp {
+  font-variant-numeric: tabular-nums;
+}
+.progress-card .button {
+  margin-top: calc(var(--space) * 4);
+}
