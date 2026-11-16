@@ -63,6 +63,26 @@ const envSchema = z
     TURNSTILE_SECRET_KEY: optionalSecret(z.string().min(1)),
     // `hibp` checks new passwords against Have I Been Pwned with k-anonymity (C-02).
     BREACHED_PASSWORD_CHECK: z.enum(['hibp', 'off']).default('hibp'),
+
+    // Payment providers offered at checkout, comma-separated (ADR-0008). Empty
+    // means checkout is closed; each listed provider needs its credentials.
+    PAYMENT_PROVIDERS: z
+      .string()
+      .default('')
+      .transform((value) =>
+        value
+          .split(',')
+          .map((p) => p.trim())
+          .filter(Boolean),
+      )
+      .pipe(z.array(z.enum(['payme', 'click']))),
+    // Payme Merchant API: the cashbox ID and its key (test key on staging).
+    PAYME_MERCHANT_ID: optionalSecret(
+      z.string().regex(/^[0-9a-f]{24}$/, 'expected a 24-character cashbox ID'),
+    ),
+    PAYME_KEY: optionalSecret(z.string().min(8)),
+    // checkout.test.paycom.uz on staging, checkout.paycom.uz in production.
+    PAYME_CHECKOUT_URL: z.url().default('https://checkout.test.paycom.uz'),
   })
   // Storage and the media key secret, shared with the worker.
   .extend(mediaEnvSchema.shape)
@@ -70,6 +90,11 @@ const envSchema = z
     if (env.SMS_PROVIDER === 'eskiz') {
       for (const key of ['ESKIZ_EMAIL', 'ESKIZ_PASSWORD'] as const) {
         if (!env[key]) ctx.addIssue({ code: 'custom', path: [key], message: 'required for Eskiz' });
+      }
+    }
+    if (env.PAYMENT_PROVIDERS.includes('payme')) {
+      for (const key of ['PAYME_MERCHANT_ID', 'PAYME_KEY'] as const) {
+        if (!env[key]) ctx.addIssue({ code: 'custom', path: [key], message: 'required for Payme' });
       }
     }
     if (env.CAPTCHA_PROVIDER === 'turnstile' && !env.TURNSTILE_SECRET_KEY) {

@@ -86,6 +86,19 @@ export const billingSchema = z
       })
       .strict(),
     referral: z.object({ qualifyAfterActiveDays: positiveInt }).strict(),
+    // How long a parent has to pay an order before it expires.
+    orderExpiresMinutes: positiveInt.max(24 * 60),
+    // Fiscal receipt data sent to the provider (OFD). Optional until the
+    // product's IKPU code is registered; without it no receipt items are sent.
+    fiscal: z
+      .object({
+        ikpuCode: z.string().regex(/^\d{17}$/, 'IKPU codes have 17 digits'),
+        packageCode: z.string().min(1).max(20),
+        vatPercent: z.number().int().min(0).max(100),
+        title: z.string().min(1).max(128),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 

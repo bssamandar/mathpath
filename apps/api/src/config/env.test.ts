@@ -22,6 +22,20 @@ describe('parseEnv', () => {
     expect(env.CORS_ORIGINS).toEqual(['https://mathpath.uz', 'https://studio.mathpath.uz']);
   });
 
+  it('closes checkout by default and needs Payme credentials when Payme is on', () => {
+    expect(parseEnv(base).PAYMENT_PROVIDERS).toEqual([]);
+    expect(() => parseEnv({ ...base, PAYMENT_PROVIDERS: 'payme' })).toThrow(/PAYME_KEY/);
+    expect(() => parseEnv({ ...base, PAYMENT_PROVIDERS: 'stripe' })).toThrow(/PAYMENT_PROVIDERS/);
+    const env = parseEnv({
+      ...base,
+      PAYMENT_PROVIDERS: 'payme, click',
+      PAYME_MERCHANT_ID: '0123456789abcdef01234567',
+      PAYME_KEY: secret,
+    });
+    expect(env.PAYMENT_PROVIDERS).toEqual(['payme', 'click']);
+    expect(env.PAYME_CHECKOUT_URL).toBe('https://checkout.test.paycom.uz');
+  });
+
   it('rejects invalid values and names the variable', () => {
     expect(() => parseEnv({ ...base, PORT: 'eighty' })).toThrow(/PORT/);
     expect(() => parseEnv({ ...base, CORS_ORIGINS: 'not a url' })).toThrow(/CORS_ORIGINS/);

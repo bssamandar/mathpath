@@ -614,6 +614,22 @@ account, device and card" in the database itself.
 The reward is granted only after the referred account is verified and active
 for N days (config).
 
+> **Implementation note (step 6.5a, migration `2026111801_billing`):** built so
+> far are `orders`, `subscriptions`, `subscription_members`, `payments` and
+> `payment_callbacks`. `orders` also stores `plan_interval`, `student_ids uuid[]`
+> (the children the parent chose, so fulfilment needs nothing from the request),
+> `provider`, `return_url` and `paid_at` (checked: set exactly when paid);
+> `promo_code_id` waits for promo codes. `subscriptions` has `order_id` (unique
+> when set, so one order makes one subscription) and no `payment_method_id` yet.
+> `payments.cancel_reason` is a `smallint` holding the provider's reason code
+> (Payme sends 1–10; 4 is our 12-hour timeout), and a partial unique index
+> allows one `pending` or `paid` payment per order. The forward-only rule is the
+> trigger `payments_forward_only`: pending → paid, cancelled or failed; paid →
+> refunded or partially refunded; partially refunded → refunded. All money is
+> `bigint` tiyin with positive checks. `payment_methods`, `refunds`,
+> `promo_codes`, `promo_redemptions`, `trials` and `referrals` come with saved
+> cards, admin refunds and step 6.5c.
+
 ### 3.11 `classroom`
 
 **classes**: `id`, `teacher_id`, `name`, `grade`, `join_code UQ`

@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AssessmentModule } from './assessment/assessment.module';
 import { AuditModule } from './audit/audit.module';
+import { BillingModule } from './billing/billing.module';
 import { CommonModule } from './common/common.module';
 import { RedisModule } from './redis/redis.module';
 import { RiskModule } from './risk/risk.module';
@@ -32,6 +33,7 @@ import { LearningModule } from './learning/learning.module';
     MediaModule,
     LearningModule,
     AssessmentModule,
+    BillingModule,
   ],
 })
 export class AppModule {}

@@ -748,7 +748,7 @@ export class AttemptsService {
    * the increment only happens while the count is under the limit.
    */
   private async countExercise(userId: string, trx: Transaction<Database>): Promise<void> {
-    if (await this.entitlements.hasSubscription(userId)) return;
+    if (await this.entitlements.hasSubscription(userId, trx)) return;
     const limit = this.rules.limits.freeTier.dailyExercises;
     const counted = await trx
       .insertInto('daily_usage')

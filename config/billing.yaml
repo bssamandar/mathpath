@@ -23,3 +23,13 @@ renewal:
 referral:
   # Reward only after the invited account is verified and active on this many distinct days (C-23).
   qualifyAfterActiveDays: 7
+# An unpaid order expires after this many minutes; the parent starts a new one.
+orderExpiresMinutes: 60
+# Fiscal receipt items for Payme and Click (OFD). Fill in once the IKPU code
+# for the subscription is registered (tasnif.soliq.uz); until then no
+# receipt items are sent.
+# fiscal:
+#   ikpuCode: '00000000000000000'
+#   packageCode: '0000000'
+#   vatPercent: 12
+#   title: 'MathPath obunasi'
