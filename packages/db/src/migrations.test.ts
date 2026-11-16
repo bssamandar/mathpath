@@ -41,6 +41,8 @@ const expectedTables: TableName[] = [
   'outbox_events',
   'parent_child_links',
   'processed_events',
+  'question_template_versions',
+  'question_templates',
   'refresh_tokens',
   'risk_events',
   'risk_reviews',
@@ -274,6 +276,83 @@ describe('content constraints', () => {
     await expect(
       db.insertInto('tracks').values({ id: newId(), slug: 'school', title: '"plain"' }).execute(),
     ).rejects.toThrow(/check/i);
+  });
+});
+
+describe('question templates', () => {
+  async function insertTemplate() {
+    const topic = await insertTopic();
+    const author = await insertUser();
+    const template = newId();
+    await db
+      .insertInto('question_templates')
+      .values({ id: template, topic_id: topic, created_by: author })
+      .execute();
+    const insert = (versionNo: number) => {
+      const id = newId();
+      return db
+        .insertInto('question_template_versions')
+        .values({
+          id,
+          template_id: template,
+          version_no: versionNo,
+          type: 'numeric',
+          difficulty: 2,
+          body: { stem: {} },
+          author_id: author,
+          content_hash: 'h',
+        })
+        .execute()
+        .then(() => id);
+    };
+    return { insert };
+  }
+
+  it('freezes a published version and allows one open draft', async () => {
+    const { insert } = await insertTemplate();
+    const id = await insert(1);
+    await expect(insert(2)).rejects.toThrow(/one_open_draft/);
+    await db
+      .updateTable('question_template_versions')
+      .set({ status: 'published', published_at: new Date() })
+      .where('id', '=', id)
+      .execute();
+    await expect(
+      db
+        .updateTable('question_template_versions')
+        .set({ difficulty: 5 })
+        .where('id', '=', id)
+        .execute(),
+    ).rejects.toThrow(/immutable/);
+    await expect(
+      db.deleteFrom('question_template_versions').where('id', '=', id).execute(),
+    ).rejects.toThrow(/cannot be deleted/);
+    await db
+      .updateTable('question_template_versions')
+      .set({ status: 'archived' })
+      .where('id', '=', id)
+      .execute();
+    await expect(
+      db
+        .updateTable('question_template_versions')
+        .set({ status: 'published' })
+        .where('id', '=', id)
+        .execute(),
+    ).rejects.toThrow(/immutable/);
+  });
+
+  it('checks type, difficulty and the body shape', async () => {
+    const { insert } = await insertTemplate();
+    const id = await insert(1);
+    for (const bad of [{ type: 'essay' }, { difficulty: 6 }, { body: '[]' }]) {
+      await expect(
+        db
+          .updateTable('question_template_versions')
+          .set(bad as never)
+          .where('id', '=', id)
+          .execute(),
+      ).rejects.toThrow(/check/i);
+    }
   });
 });
 

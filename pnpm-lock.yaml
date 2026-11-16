@@ -65,6 +65,9 @@ importers:
       '@mathpath/media':
         specifier: workspace:*
         version: link:../../packages/media
+      '@mathpath/questions':
+        specifier: workspace:*
+        version: link:../../packages/questions
       '@nestjs/common':
         specifier: 11.2.8
         version: 11.2.8(reflect-metadata@0.2.2)(rxjs@7.8.2)
@@ -320,6 +323,19 @@ importers:
       '@aws-sdk/s3-request-presigner':
         specifier: 3.1160.0
         version: 3.1160.0
+      zod:
+        specifier: 4.6.7
+        version: 4.6.7
+    devDependencies:
+      '@vitest/coverage-v8':
+        specifier: 4.1.12
+        version: 4.1.12(vitest@4.1.12)
+      vitest:
+        specifier: 4.1.12
+        version: 4.1.12(@types/node@22.19.1)(@vitest/coverage-v8@4.1.12)(jiti@2.6.1)(yaml@2.9.1)
+
+  packages/questions:
+    dependencies:
       zod:
         specifier: 4.6.7
         version: 4.6.7

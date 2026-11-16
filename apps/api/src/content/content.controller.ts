@@ -24,7 +24,9 @@ import type { AuthedRequest } from '../identity/auth.guard';
 import { Access } from '../identity/permissions';
 import { CatalogueService } from './catalogue.service';
 import { topicVersionInput } from './documents';
+import { QuestionStudioService, questionTemplateInput } from './question-studio.service';
 import { StudioService } from './studio.service';
+import { QUESTION_TYPES } from '@mathpath/questions';
 
 const id = z.uuid();
 const LOCALES = ['uz-Latn', 'ru', 'en'];
@@ -110,9 +112,20 @@ const reviewBody = z
   })
   .strict();
 
+const previewBody = z
+  .object({
+    type: z.enum(QUESTION_TYPES),
+    body: z.unknown(),
+    samples: z.number().int().min(1).max(20).default(5),
+  })
+  .strict();
+
 @Controller('studio')
 export class StudioController {
-  constructor(private readonly studio: StudioService) {}
+  constructor(
+    private readonly studio: StudioService,
+    private readonly questions: QuestionStudioService,
+  ) {}
 
   /** GET /studio/tree: tracks, courses, chapters and topics, drafts included. */
   @Get('tree')
@@ -177,7 +190,10 @@ export class StudioController {
   @HttpCode(200)
   @Access('content:author')
   async submit(@Param('versionId') versionId: string, @Req() req: AuthedRequest) {
-    return this.studio.submit(req.auth!, parseInput(id, versionId));
+    const vid = parseInput(id, versionId);
+    return (await this.questions.owns(vid))
+      ? this.questions.submit(req.auth!, vid)
+      : this.studio.submit(req.auth!, vid);
   }
 
   /** POST /studio/versions/{versionId}/review */
@@ -190,7 +206,10 @@ export class StudioController {
     @Req() req: AuthedRequest,
   ) {
     const body = parseInput(reviewBody, raw);
-    return this.studio.review(req.auth!, parseInput(id, versionId), body.decision, body.comments);
+    const vid = parseInput(id, versionId);
+    return (await this.questions.owns(vid))
+      ? this.questions.review(req.auth!, vid, body.decision, body.comments)
+      : this.studio.review(req.auth!, vid, body.decision, body.comments);
   }
 
   /** POST /studio/versions/{versionId}/publish */
@@ -198,6 +217,97 @@ export class StudioController {
   @HttpCode(200)
   @Access('content:publish')
   async publish(@Param('versionId') versionId: string, @Req() req: AuthedRequest) {
-    return this.studio.publish(req.auth!, parseInput(id, versionId));
+    const vid = parseInput(id, versionId);
+    return (await this.questions.owns(vid))
+      ? this.questions.publish(req.auth!, vid)
+      : this.studio.publish(req.auth!, vid);
+  }
+
+  /** GET /studio/topics/{topicId}/question-templates */
+  @Get('topics/:topicId/question-templates')
+  @Access('content:author')
+  async questionTemplates(@Param('topicId') topicId: string) {
+    return { items: await this.questions.listTemplates(parseInput(id, topicId)) };
+  }
+
+  /** POST /studio/topics/{topicId}/question-templates: a new template with its first draft. */
+  @Post('topics/:topicId/question-templates')
+  @HttpCode(201)
+  @Access('content:author')
+  async createQuestion(
+    @Param('topicId') topicId: string,
+    @Body() raw: unknown,
+    @Req() req: AuthedRequest,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const version = await this.questions.createTemplate(
+      req.auth!,
+      parseInput(id, topicId),
+      parseInput(questionTemplateInput, raw),
+    );
+    res.setHeader('ETag', version.etag);
+    return version;
+  }
+
+  /** GET /studio/question-templates/{templateId}/versions */
+  @Get('question-templates/:templateId/versions')
+  @Access('content:author')
+  async questionVersions(@Param('templateId') templateId: string) {
+    return { items: await this.questions.listVersions(parseInput(id, templateId)) };
+  }
+
+  /** POST /studio/question-templates/{templateId}/versions: a new draft copied from the latest. */
+  @Post('question-templates/:templateId/versions')
+  @HttpCode(201)
+  @Access('content:author')
+  async createQuestionDraft(
+    @Param('templateId') templateId: string,
+    @Req() req: AuthedRequest,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const version = await this.questions.createDraft(req.auth!, parseInput(id, templateId));
+    res.setHeader('ETag', version.etag);
+    return version;
+  }
+
+  /** POST /studio/question-templates/preview: sample items with answers, for authoring. */
+  @Post('question-templates/preview')
+  @HttpCode(200)
+  @Access('content:author')
+  previewQuestion(@Body() raw: unknown) {
+    const input = parseInput(previewBody, raw);
+    return this.questions.preview(input.type, input.body, input.samples);
+  }
+
+  /** GET /studio/question-template-versions/{versionId} */
+  @Get('question-template-versions/:versionId')
+  @Access('content:author')
+  async questionVersion(
+    @Param('versionId') versionId: string,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const version = await this.questions.getVersion(parseInput(id, versionId));
+    res.setHeader('ETag', version.etag);
+    return version;
+  }
+
+  /** PUT /studio/question-template-versions/{versionId}: needs If-Match. */
+  @Put('question-template-versions/:versionId')
+  @Access('content:author')
+  async saveQuestion(
+    @Param('versionId') versionId: string,
+    @Headers('if-match') ifMatch: string | undefined,
+    @Body() raw: unknown,
+    @Req() req: AuthedRequest,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const version = await this.questions.saveDraft(
+      req.auth!,
+      parseInput(id, versionId),
+      ifMatch,
+      parseInput(questionTemplateInput, raw),
+    );
+    res.setHeader('ETag', version.etag);
+    return version;
   }
 }

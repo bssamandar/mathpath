@@ -117,6 +117,170 @@ const TOPICS: DemoTopic[] = [
   },
 ];
 
+interface DemoQuestion {
+  /** Index into DEMO_IDS.topics. */
+  topic: number;
+  type: 'numeric' | 'single_choice' | 'multiple_choice';
+  difficulty: number;
+  skills: string[];
+  body: Record<string, unknown>;
+}
+
+/**
+ * Demo question templates (schema doc §4.2), two or three per topic. They
+ * are checked against the engine by the API's question tests.
+ */
+const QUESTIONS: DemoQuestion[] = [
+  {
+    topic: 0,
+    type: 'single_choice',
+    difficulty: 1,
+    skills: ['fraction_meaning'],
+    body: {
+      variables: { n: { int: [3, 9] }, k: { int: [1, 'n-1'] } },
+      constraints: ['2 * k != n'],
+      stem: {
+        'uz-Latn':
+          'Doira {n} ta teng qismga bo‘lingan, {k} tasi bo‘yalgan. Bo‘yalgan qism qaysi kasr?',
+        ru: 'Круг разделён на {n} равных частей, {k} из них закрашены. Какая это дробь?',
+      },
+      answer: { kind: 'choice', expr: 'k/n', display: 'fraction' },
+      distractors: ['n/k', '(n-k)/n', '1/n'],
+      hints: [
+        {
+          'uz-Latn': 'Maxraj: hamma qismlar soni. Surat: bo‘yalgan qismlar soni.',
+          ru: 'Знаменатель: сколько всего частей. Числитель: сколько закрашено.',
+        },
+      ],
+    },
+  },
+  {
+    topic: 0,
+    type: 'numeric',
+    difficulty: 2,
+    skills: ['fraction_meaning'],
+    body: {
+      variables: { n: { int: [12, 30] }, k: { int: [1, 'n-1'] } },
+      stem: {
+        'uz-Latn':
+          'Sinfda {n} o‘quvchi bor, {k} tasi qiz bola. Qiz bolalar sinfning qancha qismi? Kasr bilan yozing.',
+        ru: 'В классе {n} учеников, {k} из них девочки. Какую часть класса составляют девочки? Запишите дробью.',
+      },
+      answer: { kind: 'fraction', expr: 'k/n', accept: ['equivalent'] },
+    },
+  },
+  {
+    topic: 0,
+    type: 'multiple_choice',
+    difficulty: 2,
+    skills: ['equivalent_fractions'],
+    body: {
+      stem: {
+        'uz-Latn': 'Qaysi kasrlar $\\frac{1}{2}$ ga teng? Hammasini belgilang.',
+        ru: 'Какие дроби равны $\\frac{1}{2}$? Отметьте все.',
+      },
+      answer: {
+        kind: 'choices',
+        options: [
+          { text: { 'uz-Latn': '$\\frac{2}{4}$', ru: '$\\frac{2}{4}$' }, correct: true },
+          { text: { 'uz-Latn': '$\\frac{3}{6}$', ru: '$\\frac{3}{6}$' }, correct: true },
+          { text: { 'uz-Latn': '$\\frac{2}{3}$', ru: '$\\frac{2}{3}$' }, correct: false },
+          { text: { 'uz-Latn': '$\\frac{1}{4}$', ru: '$\\frac{1}{4}$' }, correct: false },
+        ],
+      },
+    },
+  },
+  {
+    topic: 1,
+    type: 'single_choice',
+    difficulty: 1,
+    skills: ['comparing_fractions'],
+    body: {
+      variables: { d: { int: [3, 12] }, a: { int: [1, 'd-1'] }, b: { int: [1, 'd-1'] } },
+      constraints: ['a != b'],
+      stem: {
+        'uz-Latn': 'Qaysi kasr katta: $\\frac{{a}}{{d}}$ yoki $\\frac{{b}}{{d}}$?',
+        ru: 'Какая дробь больше: $\\frac{{a}}{{d}}$ или $\\frac{{b}}{{d}}$?',
+      },
+      answer: { kind: 'choice', expr: 'max(a, b)/d', display: 'fraction' },
+      distractors: ['min(a, b)/d'],
+    },
+  },
+  {
+    topic: 1,
+    type: 'numeric',
+    difficulty: 3,
+    skills: ['fraction_to_decimal'],
+    body: {
+      variables: { d: { choice: [2, 4, 5, 8, 10, 20, 25] }, a: { int: [1, 'd-1'] } },
+      stem: {
+        'uz-Latn': '$\\frac{{a}}{{d}}$ ni o‘nli kasr ko‘rinishida yozing.',
+        ru: 'Запишите $\\frac{{a}}{{d}}$ в виде десятичной дроби.',
+      },
+      answer: { kind: 'number', expr: 'a/d' },
+    },
+  },
+  {
+    topic: 2,
+    type: 'numeric',
+    difficulty: 2,
+    skills: ['fraction_addition'],
+    body: {
+      variables: { d: { int: [2, 9] }, a: { int: [1, 'd-1'] }, b: { int: [1, 'd-1'] } },
+      constraints: ['a + b != d'],
+      stem: {
+        'uz-Latn': 'Hisoblang: $\\frac{{a}}{{d}} + \\frac{{b}}{{d}}$',
+        ru: 'Вычислите: $\\frac{{a}}{{d}} + \\frac{{b}}{{d}}$',
+      },
+      answer: { kind: 'fraction', expr: '(a+b)/d', accept: ['equivalent', 'mixed_number'] },
+      hints: [
+        {
+          'uz-Latn': 'Maxrajlar bir xil: suratlarni qo‘shing.',
+          ru: 'Знаменатели одинаковые: сложите числители.',
+        },
+      ],
+      solution: {
+        'uz-Latn': '$\\frac{{a}}{{d}} + \\frac{{b}}{{d}} = \\frac{{a+b}}{{d}}$',
+        ru: '$\\frac{{a}}{{d}} + \\frac{{b}}{{d}} = \\frac{{a+b}}{{d}}$',
+      },
+    },
+  },
+  {
+    topic: 2,
+    type: 'single_choice',
+    difficulty: 1,
+    skills: ['fraction_addition'],
+    body: {
+      variables: { d: { int: [3, 11] }, a: { int: [1, 'd-2'] }, b: { int: [1, 'd-a-1'] } },
+      stem: {
+        'uz-Latn': '$\\frac{{a}}{{d}} + \\frac{{b}}{{d}} = ?$',
+        ru: '$\\frac{{a}}{{d}} + \\frac{{b}}{{d}} = ?$',
+      },
+      answer: { kind: 'choice', expr: '(a+b)/d', display: 'fraction' },
+      distractors: ['(a+b)/(2*d)', '(a*b)/d', '(a+b+1)/d'],
+    },
+  },
+  {
+    topic: 2,
+    type: 'numeric',
+    difficulty: 3,
+    skills: ['fraction_addition', 'word_problem'],
+    body: {
+      variables: { d: { int: [5, 12] }, a: { int: [1, 'd-2'] }, b: { int: [1, 'd-a-1'] } },
+      stem: {
+        'uz-Latn':
+          'Ali pitsaning {a}/{d} qismini, Vali esa {b}/{d} qismini yedi. Ikkalasi birga pitsaning qancha qismini yedi?',
+        ru: 'Али съел {a}/{d} пиццы, а Вали {b}/{d}. Какую часть пиццы они съели вместе?',
+      },
+      answer: { kind: 'fraction', expr: '(a+b)/d', accept: ['equivalent'] },
+    },
+  },
+];
+
+/** Fixed IDs, so seeding twice changes nothing: template …0061+i, version …0071+i. */
+const questionId = (base: number, i: number) =>
+  `01936a00-0000-7000-8000-${String(base + i).padStart(12, '0')}`;
+
 function hash(value: unknown): string {
   return createHash('sha256').update(JSON.stringify(value)).digest('hex');
 }
@@ -211,6 +375,43 @@ export async function seedDemoContent(db: Kysely<Database>, now = new Date()): P
         .where('id', '=', topicId)
         .execute();
       created += 1;
+    }
+
+    for (const [i, q] of QUESTIONS.entries()) {
+      const templateId = questionId(61, i);
+      const versionId = questionId(81, i);
+      const inserted = await trx
+        .insertInto('question_templates')
+        .values({
+          id: templateId,
+          topic_id: DEMO_IDS.topics[q.topic]!,
+          created_by: DEMO_IDS.author,
+        })
+        .onConflict((oc) => oc.column('id').doNothing())
+        .returning('id')
+        .executeTakeFirst();
+      if (!inserted) continue;
+      await trx
+        .insertInto('question_template_versions')
+        .values({
+          id: versionId,
+          template_id: templateId,
+          version_no: 1,
+          status: 'published',
+          type: q.type,
+          difficulty: q.difficulty,
+          skills: q.skills,
+          body: JSON.stringify(q.body),
+          author_id: DEMO_IDS.author,
+          content_hash: hash(q),
+          published_at: now,
+        })
+        .execute();
+      await trx
+        .updateTable('question_templates')
+        .set({ published_version_id: versionId })
+        .where('id', '=', templateId)
+        .execute();
     }
     return created;
   });
