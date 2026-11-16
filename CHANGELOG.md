@@ -65,6 +65,14 @@ project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Admins can author and review content; while `adminSelfReview` is on
   (`config/content.yaml`), an admin may approve their own version, marked
   `selfReview` in the audit log.
+- Media (`apps/api` media module, `apps/worker` transcoding, `packages/media`,
+  migration `2026111602_media`): presigned uploads straight to S3-compatible
+  storage (SeaweedFS locally and in CI), checks of the stored file (size, type,
+  first bytes, SVG without script), ffmpeg transcoding to an HLS ladder plus an
+  audio-only fallback, AES-128 per video with the key sealed at rest, token-bound
+  playlists and key endpoint (re-checks access, rate-limited per session),
+  watermark code, subtitles per locale. Worker image with ffmpeg
+  (`infra/docker/worker.Dockerfile`).
 - `config/auth.yaml` for token lifetimes, OTP resend delay and password rules.
 - Migration `2026111502_terms_acceptance`: the terms version each user accepted.
 - Errors are returned as RFC 9457 problem details with a stable `code` and request ID.

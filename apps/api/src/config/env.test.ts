@@ -40,6 +40,8 @@ describe('parseEnv', () => {
     expect(message).toMatch(/JWT_PRIVATE_KEY/);
     expect(message).toMatch(/AUTH_HMAC_SECRET/);
     expect(message).toMatch(/SMS_PROVIDER/);
+    expect(message).toMatch(/S3_ENDPOINT/);
+    expect(message).toMatch(/MEDIA_KEY_SECRET/);
   });
 
   it('accepts development without keys, because they are generated at start-up', () => {

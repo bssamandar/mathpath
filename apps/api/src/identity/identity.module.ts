@@ -182,6 +182,6 @@ import { TokenService } from './token.service';
     { provide: APP_GUARD, useClass: AuthGuard },
   ],
   // Used by the family module for child accounts, consent and child sign-in.
-  exports: [SessionService, OtpService, PasswordService, SmsSender, MfaService],
+  exports: [SessionService, OtpService, PasswordService, SmsSender, MfaService, AuthKeys],
 })
 export class IdentityModule {}

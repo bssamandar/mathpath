@@ -1,6 +1,5 @@
 # Local development services only. Production infrastructure is described in
 # the deployment plan (Phase 7). Credentials here are throwaway local values.
-# S3-compatible object storage is added with the media module (step 6.3).
 name: mathpath
 
 services:
@@ -23,6 +22,26 @@ services:
     ports: ['127.0.0.1:6379:6379']
     volumes: [redis-data:/data]
 
+  # S3-compatible object storage for media (step 6.3). SeaweedFS rather than
+  # MinIO: MinIO stopped publishing images on Docker Hub. The bucket is
+  # created by the API at start-up outside production.
+  seaweedfs:
+    image: chrislusf/seaweedfs:3.97
+    command:
+      - server
+      - -dir=/data
+      - -ip.bind=0.0.0.0
+      - -s3
+      - -s3.port=8333
+      - -s3.config=/etc/seaweedfs/s3.json
+      - -master.volumeSizeLimitMB=256
+      - -volume.max=32
+    ports: ['127.0.0.1:8333:8333']
+    volumes:
+      - seaweedfs-data:/data
+      - ./seaweedfs/s3.json:/etc/seaweedfs/s3.json:ro
+
 volumes:
   postgres-data:
   redis-data:
+  seaweedfs-data:

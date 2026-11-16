@@ -334,24 +334,32 @@ map school topics ↔ Cambridge/SAT/entrance topics.
 
 ### 3.5 `media`
 
-**media_assets**
+**media_assets** (migration `2026111602_media`)
 | Column | Type | Notes |
 |---|---|---|
 | id | uuid PK | |
 | kind | text | `video`, `image`, `subtitle` |
-| locale | text NULL | For videos and subtitles |
-| source_key | text | Original upload in the private bucket |
-| status | text | `uploaded`, `processing`, `ready`, `failed` |
-| hls_manifest_key | text NULL | |
-| key_ref | text NULL | Reference to the AES key in the secret manager or key table |
+| locale | text NULL | Subtitles (required) and videos |
+| parent_id | uuid NULL FK → media_assets | The video a subtitle belongs to; only subtitles have one (CHECK) |
+| content_type | text | Declared at upload; checked against the stored object |
+| size_bytes | bigint | Declared at upload; signed into the upload URL |
+| source_key | text UNIQUE | Original upload in the private bucket (`sources/{id}`) |
+| status | text | `awaiting_upload`, `uploaded`, `processing`, `ready`, `failed` |
+| hls_manifest_key | text NULL | `hls/{id}/master.m3u8`; a ready video must have it and a duration (CHECK) |
 | duration_s | integer NULL | |
-| renditions | jsonb NULL | Available resolutions and bitrates |
-| uploaded_by | uuid | |
+| renditions | jsonb NULL | `[{name, height, bandwidth}]`; `height` is null for the audio-only fallback |
+| error | text NULL | Why an upload or transcode was refused |
+| uploaded_by | uuid FK → users | |
 | created_at, updated_at | | |
 
-**media_keys**: `media_id PK`, `key bytea (enc)`, `iv bytea`, `rotated_at`.
-These are AES-128 keys for HLS, encrypted at rest with a master key from the
-secret manager.
+The `key_ref` column planned earlier is not needed: the key row is found by `media_id`.
+
+**media_keys**: `media_id PK FK`, `sealed_key bytea` (44 bytes: IV + GCM tag +
+key), `iv bytea` (16 bytes, the HLS IV, not secret), `created_at`,
+`rotated_at`. The AES-128 key of each video is sealed with AES-256-GCM under
+a key derived from `MEDIA_KEY_SECRET`, with the media ID as associated data,
+so neither a database dump nor a copied row decrypts a video. Re-transcoding
+a video replaces its key and sets `rotated_at`.
 
 ### 3.6 `learning`
 

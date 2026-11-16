@@ -741,6 +741,12 @@ paths:
       tags: [Media]
       operationId: getPlayback
       summary: Signed, expiring HLS playlist URL plus watermark payload.
+      description: >
+        For a ready video that appears in a published lesson the caller may open
+        (content staff may preview any ready video). `manifestUrl` is a
+        same-origin path carrying a token bound to the video, the caller and an
+        expiry (`config/content.yaml` media.playbackTtlSeconds); the player must
+        send the session with every playlist and key request.
       x-permission: content:read
       parameters:
         - { name: mediaId, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } }
@@ -764,6 +770,32 @@ paths:
                         locale: { $ref: '#/components/schemas/Locale' }
                         url: { type: string, format: uri }
         '402': { $ref: '#/components/responses/PaymentRequired' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /media/{mediaId}/hls/{playlist}:
+    get:
+      tags: [Media]
+      operationId: getHlsPlaylist
+      summary: An HLS playlist rewritten for this viewer (called by the player).
+      description: >
+        `master.m3u8` lists the renditions; `{rendition}.m3u8` (for example
+        `360p.m3u8` or `audio.m3u8`) lists encrypted segments as presigned
+        storage URLs (media.segmentUrlTtlSeconds) and points the key at
+        `GET /media/{mediaId}/key` with the same token. Only renditions the
+        worker recorded are served.
+      x-permission: content:read
+      parameters:
+        - { name: mediaId, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } }
+        - { name: playlist, in: path, required: true, schema: { type: string, pattern: '^(master|\\d{3,4}p|audio)\\.m3u8$' } }
+        - { name: token, in: query, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: 'The playlist, sent with Cache-Control: no-store.'
+          content:
+            application/vnd.apple.mpegurl:
+              schema: { type: string }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
 
   /media/{mediaId}/key:
     get:
@@ -777,11 +809,17 @@ paths:
         - { name: token, in: query, required: true, schema: { type: string } }
       responses:
         '200':
-          description: Raw 16-byte key.
+          description: 'Raw 16-byte key, sent with Cache-Control: no-store.'
           content:
             application/octet-stream:
               schema: { type: string, contentEncoding: binary }
-        '403': { $ref: '#/components/responses/Forbidden' }
+        '402': { $ref: '#/components/responses/PaymentRequired' }
+        '403':
+          description: '`PLAYBACK_TOKEN_INVALID`: the token is forged, expired, or for another video or user.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '404': { $ref: '#/components/responses/NotFound' }
         '429': { $ref: '#/components/responses/TooManyRequests' }
 
   # ──────────────────────────── Learning ────────────────────────────
@@ -1662,9 +1700,19 @@ paths:
               additionalProperties: false
               properties:
                 kind: { type: string, enum: [video, image, subtitle] }
-                contentType: { type: string, enum: [video/mp4, image/png, image/jpeg, image/svg+xml, text/vtt] }
-                sizeBytes: { type: integer, minimum: 1, maximum: 2147483648 }
+                contentType:
+                  type: string
+                  enum: [video/mp4, image/png, image/jpeg, image/svg+xml, text/vtt]
+                  description: video → video/mp4; image → png, jpeg or svg+xml; subtitle → text/vtt.
+                sizeBytes:
+                  type: integer
+                  minimum: 1
+                  maximum: 2147483648
+                  description: Exact size; it is signed into the upload URL. Limits per kind are in config/content.yaml.
                 locale: { $ref: '#/components/schemas/Locale' }
+                videoId:
+                  $ref: '#/components/schemas/Id'
+                  description: Subtitles only (required with `locale`), the video they belong to.
       responses:
         '201':
           description: Upload slot created.
@@ -1675,8 +1723,59 @@ paths:
                 required: [mediaId, uploadUrl, expiresAt]
                 properties:
                   mediaId: { $ref: '#/components/schemas/Id' }
-                  uploadUrl: { type: string, format: uri }
+                  uploadUrl:
+                    type: string
+                    format: uri
+                    description: PUT the file here with the same Content-Type and size.
                   expiresAt: { type: string, format: date-time }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /studio/media/{mediaId}/complete:
+    post:
+      tags: [Studio]
+      operationId: completeMediaUpload
+      summary: Tell the API the upload finished.
+      description: >
+        The API checks the stored object (size, type, first bytes; SVG with
+        script is refused). Videos move to `uploaded` and are queued for
+        transcoding; images and subtitles become `ready`. Calling it again for
+        an `uploaded` video queues it again (idempotent).
+      x-permission: content:author
+      parameters:
+        - { name: mediaId, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MediaAsset' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: '`UPLOAD_MISSING` (the file has not arrived) or `MEDIA_STATE_CONFLICT`.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '422':
+          description: '`UPLOAD_REJECTED`: the file does not match the request; the asset is `failed`.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /studio/media/{mediaId}:
+    get:
+      tags: [Studio]
+      operationId: getMediaAsset
+      summary: Status of an upload (the studio polls it while a video transcodes).
+      x-permission: content:author
+      parameters:
+        - { name: mediaId, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MediaAsset' }
+        '404': { $ref: '#/components/responses/NotFound' }
 
   # ───────────────────────────── Admin ─────────────────────────────
   /admin/users:
@@ -2682,6 +2781,33 @@ components:
           type: array
           items: { $ref: '#/components/schemas/LocalizedText' }
         solution: { $ref: '#/components/schemas/LocalizedText' }
+
+    MediaAsset:
+      type: object
+      required: [id, kind, status, contentType, sizeBytes, locale, videoId, durationS, renditions, error, previewUrl]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        kind: { type: string, enum: [video, image, subtitle] }
+        status: { type: string, enum: [awaiting_upload, uploaded, processing, ready, failed] }
+        contentType: { type: string }
+        sizeBytes: { type: integer }
+        locale: { oneOf: [{ $ref: '#/components/schemas/Locale' }, { type: 'null' }] }
+        videoId: { oneOf: [{ $ref: '#/components/schemas/Id' }, { type: 'null' }] }
+        durationS: { type: [integer, 'null'] }
+        renditions:
+          type: array
+          items:
+            type: object
+            required: [name, height, bandwidth]
+            properties:
+              name: { type: string, examples: ['360p', 'audio'] }
+              height: { type: [integer, 'null'], description: null for the audio-only fallback }
+              bandwidth: { type: integer }
+        error: { type: [string, 'null'], description: Why a failed upload or transcode was refused. }
+        previewUrl:
+          type: [string, 'null']
+          format: uri
+          description: Short-lived download URL for a ready image or subtitle.
 
     AdminUser:
       type: object

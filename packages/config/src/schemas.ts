@@ -232,7 +232,29 @@ export const contentSchema = z
         z.enum(['single_choice', 'multiple_choice', 'numeric', 'formula', 'matching', 'ordering']),
       )
       .min(1),
-    video: z.object({ minDurationSeconds: positiveInt, maxDurationSeconds: positiveInt }).strict(),
+    video: z
+      .object({
+        minDurationSeconds: positiveInt,
+        maxDurationSeconds: positiveInt,
+        maxUploadBytes: positiveInt,
+        segmentSeconds: positiveInt,
+        // Renditions from lowest to highest; none is taller than the source.
+        ladder: z.array(z.object({ height: positiveInt, videoKbps: positiveInt }).strict()).min(1),
+        audioKbps: positiveInt,
+        // The audio-only fallback for very slow connections.
+        audioOnlyKbps: positiveInt,
+      })
+      .strict(),
+    media: z
+      .object({
+        uploadUrlTtlSeconds: positiveInt,
+        playbackTtlSeconds: positiveInt,
+        segmentUrlTtlSeconds: positiveInt,
+        keyRequestsPerMinute: positiveInt,
+        maxImageBytes: positiveInt,
+        maxSubtitleBytes: positiveInt,
+      })
+      .strict(),
     // Four-eyes exception (C-18): an admin may approve their own version.
     adminSelfReview: z.boolean(),
   })
@@ -244,6 +266,10 @@ export const contentSchema = z
   .refine((c) => c.video.maxDurationSeconds > c.video.minDurationSeconds, {
     message: 'maxDurationSeconds must be greater than minDurationSeconds',
     path: ['video'],
+  })
+  .refine((c) => isStrictlyAscending(c.video.ladder.map((r) => r.height)), {
+    message: 'ladder heights must be strictly ascending',
+    path: ['video', 'ladder'],
   });
 
 /** Maps each config file name (without .yaml) to its schema. */
