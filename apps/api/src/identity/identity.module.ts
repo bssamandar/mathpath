@@ -30,6 +30,8 @@ import {
   HibpBreachedPasswordChecker,
 } from './breached-passwords';
 import { AuthKeys } from './keys';
+import { MfaController } from './mfa.controller';
+import { MfaService } from './mfa.service';
 import { OtpService } from './otp.service';
 import { PasswordService } from './password.service';
 import { MemoryRevokedSessions, RedisRevokedSessions, RevokedSessions } from './revoked-sessions';
@@ -39,7 +41,7 @@ import { LogSmsSender, SmsSender } from './sms/sms-sender';
 import { TokenService } from './token.service';
 
 @Module({
-  controllers: [AuthController],
+  controllers: [AuthController, MfaController],
   providers: [
     { provide: AuthKeys, inject: [ENV], useFactory: (env: Env) => AuthKeys.fromEnv(env) },
     {
@@ -92,16 +94,10 @@ import { TokenService } from './token.service';
         rules: AppConfig,
         audit: AuditService,
       ) =>
-        new SessionService(
-          db,
-          tokens,
-          keys,
-          revoked,
-          clock,
-          rules.auth.tokens,
-          audit,
-          rules.limits.sessions.maxConcurrentPerStudent,
-        ),
+        new SessionService(db, tokens, keys, revoked, clock, rules.auth.tokens, audit, {
+          maxStudentSessions: rules.limits.sessions.maxConcurrentPerStudent,
+          staffSession: rules.auth.staffSession,
+        }),
     },
     {
       provide: OtpService,
@@ -170,9 +166,22 @@ import { TokenService } from './token.service';
           sms,
         ),
     },
+    {
+      provide: MfaService,
+      inject: [DB, AuthKeys, SessionService, RateLimiter, AuditService, Clock, BUSINESS_RULES],
+      useFactory: (
+        db: Kysely<Database>,
+        keys: AuthKeys,
+        sessions: SessionService,
+        limiter: RateLimiter,
+        audit: AuditService,
+        clock: Clock,
+        rules: AppConfig,
+      ) => new MfaService(db, keys, sessions, limiter, audit, clock, rules.auth.mfa),
+    },
     { provide: APP_GUARD, useClass: AuthGuard },
   ],
   // Used by the family module for child accounts, consent and child sign-in.
-  exports: [SessionService, OtpService, PasswordService, SmsSender],
+  exports: [SessionService, OtpService, PasswordService, SmsSender, MfaService],
 })
 export class IdentityModule {}

@@ -19,3 +19,16 @@ password:
     memoryKiB: 65536
     timeCost: 3
     parallelism: 1
+mfa:
+  # Shown in the authenticator app next to the account.
+  issuer: MathPath
+  # One-time recovery codes given at enrolment, for a lost phone (C-08).
+  recoveryCodeCount: 10
+  # Wrong 2FA codes per user; TOTP has only 10^6 values, so guessing must stay slow.
+  verifyFailures: { limit: 5, windowMinutes: 15 }
+  # An enrolment that is not confirmed in time is discarded.
+  enrolmentTtlMinutes: 15
+staffSession:
+  # Staff sessions end after this long in total, and after this long without use (C-08).
+  absoluteHours: 8
+  idleMinutes: 30

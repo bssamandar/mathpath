@@ -48,6 +48,22 @@ describe('AuthKeys', () => {
     expect(keys.hmac('otp', 'x')).not.toBe(keys.hmac('csrf', 'x'));
     expect(keys.hmac('otp', 'x')).toBe(keys.hmac('otp', 'x'));
   });
+
+  it('seals secrets so that they open only unchanged and with the same root secret', () => {
+    const keys = AuthKeys.fromEnv(parseEnv({ ...base, AUTH_HMAC_SECRET: 's'.repeat(32) }));
+    const secret = Buffer.from('totp secret bytes');
+    const sealed = keys.seal('mfa-secret', secret);
+    expect(sealed.includes(secret)).toBe(false);
+    expect(keys.open('mfa-secret', sealed)).toEqual(secret);
+    // A fresh IV each time: the same secret never seals to the same bytes.
+    expect(keys.seal('mfa-secret', secret)).not.toEqual(sealed);
+
+    const tampered = Buffer.from(sealed);
+    tampered[tampered.length - 1]! ^= 1;
+    expect(() => keys.open('mfa-secret', tampered)).toThrow();
+    const other = AuthKeys.fromEnv(parseEnv({ ...base, AUTH_HMAC_SECRET: 't'.repeat(32) }));
+    expect(() => other.open('mfa-secret', sealed)).toThrow();
+  });
 });
 
 describe('PasswordService', () => {

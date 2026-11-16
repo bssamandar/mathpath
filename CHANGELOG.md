@@ -46,6 +46,10 @@ project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   lock the profile and notify the parent; failures per family code are limited.
   Parents can switch to a child profile (linked session). A student keeps at
   most two live sessions (C-24).
+- Staff 2FA (C-08): TOTP enrolment and verification (`/auth/mfa/totp`,
+  `/auth/mfa/verify`) with secrets encrypted at rest, replay protection per time
+  step, ten one-time recovery codes and a per-user limit on wrong codes. Staff
+  sessions end after 8 hours, or 30 minutes idle (`config/auth.yaml`).
 - `config/auth.yaml` for token lifetimes, OTP resend delay and password rules.
 - Migration `2026111502_terms_acceptance`: the terms version each user accepted.
 - Errors are returned as RFC 9457 problem details with a stable `code` and request ID.
