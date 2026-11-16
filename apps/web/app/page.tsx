@@ -24,6 +24,9 @@ export default function WelcomePage() {
         <Link href="/login" className="text-link">
           {t('welcome.haveAccount')}
         </Link>
+        <Link href="/pricing" className="text-link">
+          {t('parent.pricing')}
+        </Link>
       </div>
     </Screen>
   );

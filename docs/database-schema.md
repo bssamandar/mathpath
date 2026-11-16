@@ -633,6 +633,15 @@ for N days (config).
 > Step 6.5b (migration `2026111802_payment_refs`) adds `payments.merchant_ref`,
 > a unique `bigint` identity: Click wants an integer for our side of a payment
 > (`merchant_prepare_id`, `merchant_confirm_id`), and payment IDs are UUIDs.
+>
+> Step 6.5c (migration `2026111803_promo_trials`) adds `promo_codes` (code
+> stored upper-case in `text` with a format check instead of `citext`;
+> percent ≤ 100; `valid_to > valid_from`), `promo_redemptions` (written when
+> the order is paid, not at checkout), `orders.promo_code_id`, and `trials`
+> with `owner_id` unique and `device_hash` (SHA-256 of the device token)
+> unique when present. `card_fingerprint` waits for saved cards. A trial is a
+> `subscriptions` row with `plan_code = 'trial'`, `price_tiyin = 0` and no
+> order; a child who was in one cannot get another.
 
 ### 3.11 `classroom`
 

@@ -150,6 +150,13 @@ project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   repeated calls answered from the stored transaction, a failed charge cancels
   the payment, and a new attempt replaces an unfinished one. Checkout sends the
   parent to `my.click.uz` with the amount in sum.
+- Promo codes and the free trial: admins create and stop codes in the studio
+  (percent or fixed, plans, total and per-parent limits, dates); parents check
+  a code at checkout, and it is used up only when the order is paid. The trial
+  covers chosen children for `trialDays`, once per account, child and device.
+- Web pricing, checkout (children, promo code, Payme or Click), payment return
+  page that waits for the provider, and a "Plan and payment" page with turning
+  off renewal; in Uzbek, Russian and English. Children show their current plan.
 - Errors are returned as RFC 9457 problem details with a stable `code` and request ID.
 - CI (format, lint, typecheck, tests with an 80% coverage gate, build) and security
   scanning (gitleaks, pnpm audit, OSV-Scanner, Semgrep, CodeQL); Renovate.
