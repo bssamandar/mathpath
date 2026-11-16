@@ -21,7 +21,8 @@ const fractionAddition = templateBody.parse({
     ru: 'Вычислите: $\\frac{{a}}{{d}} + \\frac{{b}}{{d}}$',
   },
   answer: { kind: 'fraction', expr: '(a+b)/d', accept: ['equivalent', 'mixed_number'] },
-  hints: [{ 'uz-Latn': 'Maxrajlar bir xil.', ru: 'Знаменатели одинаковые.' }],
+  hints: [{ 'uz-Latn': 'Maxrajlar bir xil: {d}.', ru: 'Знаменатели одинаковые.' }],
+  solution: { 'uz-Latn': '$\\frac{{a}+{b}}{{d}}$' },
   distractors: ['(a+b)/(2*d)', 'a*b/d'],
 });
 
@@ -39,6 +40,9 @@ describe('generate', () => {
     expect(item.answerKey).toMatchObject({ kind: 'fraction', value: expected.toString() });
     expect(generate('numeric', fractionAddition, 'seed-1')).toEqual(item);
     expect(check(item.answerKey, { value: `${Number(a) + Number(b)}/${d}` }).correct).toBe(true);
+    expect(item.feedback.hints[0]!['uz-Latn']).toBe(`Maxrajlar bir xil: ${d}.`);
+    expect(item.feedback.solution!['uz-Latn']).toBe(`$\\frac{${a}+${b}}{${d}}$`);
+    expect(JSON.stringify(item.presented)).not.toContain('Maxrajlar');
   });
 
   it('varies with the seed', () => {

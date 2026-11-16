@@ -5,6 +5,8 @@ import { useSearchParams } from 'next/navigation';
 import { Suspense, use, useCallback, useEffect, useState } from 'react';
 import { useI18n } from '../../../components/i18n-provider';
 import { SignedIn } from '../../../components/signed-in';
+import { MasteryStep } from '../../../components/mastery-step';
+import { PracticeStep } from '../../../components/practice-step';
 import { Button, ErrorText } from '../../../components/ui';
 import { useLoad } from '../../../components/use-load';
 import { VideoPlayer } from '../../../components/video-player';
@@ -78,7 +80,18 @@ function LessonView({ topicId }: { topicId: string }) {
               <p className="lead">{t('lesson.done')}</p>
             </section>
           ) : (
-            step && <StepView key={step.index} step={step} onDone={() => markSeen(current)} />
+            step && (
+              <StepView
+                key={step.index}
+                step={step}
+                topicId={topicId}
+                onDone={() => markSeen(current)}
+                onPractise={() => {
+                  const practice = lesson.steps.findIndex((s) => s.type === 'practice');
+                  if (practice !== -1) goTo(practice);
+                }}
+              />
+            )
           )}
 
           <div className="row lesson-nav">
@@ -115,11 +128,32 @@ function LessonView({ topicId }: { topicId: string }) {
   );
 }
 
-/** One step. Activities, practice and tests get their screens with the question engine (6.4). */
-function StepView({ step, onDone }: { step: LessonStep; onDone(): void }) {
+/** One step. Interactive activities and reviews get their screens in later steps. */
+function StepView({
+  step,
+  topicId,
+  onDone,
+  onPractise,
+}: {
+  step: LessonStep;
+  topicId: string;
+  onDone(): void;
+  onPractise(): void;
+}) {
   const { t } = useI18n();
   if (step.type === 'video' && step.mediaId) {
     return <VideoPlayer mediaId={step.mediaId} onEnded={onDone} />;
+  }
+  if (step.type === 'practice') {
+    return (
+      <>
+        {step.prompt && <p className="lead">{step.prompt}</p>}
+        <PracticeStep topicId={topicId} onProgress={onDone} />
+      </>
+    );
+  }
+  if (step.type === 'mastery_test') {
+    return <MasteryStep topicId={topicId} onPractise={onPractise} />;
   }
   return (
     <section className="step-placeholder">

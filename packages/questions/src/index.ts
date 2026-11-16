@@ -24,6 +24,7 @@ export {
   formatValue,
   generate,
   type GeneratedItem,
+  type ItemFeedback,
   type LocalisedText,
   localisedText,
   type Presented,

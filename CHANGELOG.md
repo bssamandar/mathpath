@@ -107,6 +107,15 @@ project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   with ETag, preview with sample generation; submit/review/publish reuse the
   content routes.
 - Eight demo question templates across the three demo topics.
+- Practice and mastery tests (`apps/api` assessment module): `POST /attempts`,
+  items, answers and submit, plus `GET /topics/{topicId}/assessment-status`.
+  Practice marks each answer at once (hint after the first mistake, the
+  solution and right answer after the second); the mastery test marks at the
+  end with an 80% pass mark. The free plan's 20 practice answers a day are
+  counted per Tashkent day. Migration `2026111701_assessment`.
+- `config/learning.yaml`: `practice.itemsPerSet` and `masteryTest.items`.
+- Web practice and mastery test screens in the lesson player, with formulas
+  rendered by KaTeX 0.18.11 and an on-screen number pad.
 - Errors are returned as RFC 9457 problem details with a stable `code` and request ID.
 - CI (format, lint, typecheck, tests with an 80% coverage gate, build) and security
   scanning (gitleaks, pnpm audit, OSV-Scanner, Semgrep, CodeQL); Renovate.

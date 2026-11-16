@@ -102,6 +102,13 @@ export interface GeneratedItem {
   params: Record<string, string>;
   presented: Presented;
   answerKey: AnswerKey;
+  /** Hints and worked solution with this item's numbers. Server-only until earned. */
+  feedback: ItemFeedback;
+}
+
+export interface ItemFeedback {
+  hints: LocalisedText[];
+  solution: LocalisedText | null;
 }
 
 export class TemplateError extends Error {
@@ -286,7 +293,13 @@ export function generate(
       }
       const item = build(type, body, compiled, scope, random);
       if (!item) continue;
-      return item;
+      return {
+        ...item,
+        feedback: {
+          hints: body.hints.map((h) => renderLocalised(h, scope)),
+          solution: body.solution ? renderLocalised(body.solution, scope) : null,
+        },
+      };
     } catch (error) {
       // Division by zero and the like reject this draw; a broken template fails at once.
       if (error instanceof ExpressionError && error.code === 'ARITHMETIC') continue;
@@ -312,7 +325,7 @@ function build(
   compiled: Compiled,
   scope: Map<string, Value>,
   random: ReturnType<typeof seededRandom>,
-): GeneratedItem | null {
+): Omit<GeneratedItem, 'feedback'> | null {
   const params = Object.fromEntries([...scope].map(([k, v]) => [k, String(v)]));
   const stem = renderLocalised(body.stem, scope);
   const answer = body.answer;

@@ -331,6 +331,80 @@ export interface QuestionTemplateVersionsTable {
   updated_at: ColumnType<Date, Date | undefined, Date>;
 }
 
+export type AssessmentType =
+  | 'diagnostic'
+  | 'practice'
+  | 'mastery'
+  | 'review'
+  | 'chapter'
+  | 'mock_exam';
+export type AttemptStatus = 'in_progress' | 'submitted' | 'expired' | 'invalidated';
+
+export interface AssessmentsTable {
+  id: string;
+  type: AssessmentType;
+  scope_type: 'topic' | 'chapter' | 'course';
+  scope_id: string;
+  /** Overrides of config/learning.yaml for this assessment; `{}` uses the config. */
+  blueprint: Json<Record<string, unknown>>;
+  version_no: ColumnType<number, number | undefined, number>;
+  status: ColumnType<CatalogueStatus, CatalogueStatus | undefined, CatalogueStatus>;
+  created_at: CreatedAt;
+}
+
+export interface AttemptsTable {
+  id: string;
+  user_id: string;
+  assessment_id: string;
+  topic_id: string | null;
+  assignment_id: ColumnType<string | null, string | null | undefined, string | null>;
+  status: ColumnType<AttemptStatus, AttemptStatus | undefined, AttemptStatus>;
+  started_at: ColumnType<Date, Date | undefined, never>;
+  deadline_at: NullableTimestamp;
+  submitted_at: NullableTimestamp;
+  /** numeric(7,2): read as a string. */
+  score: ColumnType<string | null, number | null | undefined, number | null>;
+  max_score: ColumnType<string | null, number | null | undefined, number | null>;
+  passed: ColumnType<boolean | null, boolean | null | undefined, boolean | null>;
+  integrity_flags: ColumnType<string[], string[] | undefined, string[]>;
+  idempotency_key: ColumnType<string | null, string | null | undefined, never>;
+  created_at: CreatedAt;
+}
+
+export interface AttemptItemsTable {
+  id: string;
+  attempt_id: string;
+  position: number;
+  template_version_id: string;
+  seed: string;
+  params: Json<Record<string, string>>;
+  /** What the learner sees (stem and shuffled choices, all locales). */
+  presented: Json<Record<string, unknown>>;
+  /** Server-only (C-16). */
+  answer_key: Json<Record<string, unknown>>;
+  /** Hints and solution for this item's numbers. Server-only until earned. */
+  feedback: Json<Record<string, unknown>>;
+  response: ColumnType<unknown, string | null | undefined, string | null>;
+  is_correct: ColumnType<boolean | null, boolean | null | undefined, boolean | null>;
+  score: ColumnType<string | null, number | null | undefined, number | null>;
+  tries: ColumnType<number, number | undefined, number>;
+  hints_shown: ColumnType<number, number | undefined, number>;
+  served_at: NullableTimestamp;
+  answered_at: NullableTimestamp;
+  /** Idempotency-Key of the last answer and its result, so a retried answer is not counted twice. */
+  last_request_key: ColumnType<string | null, string | null | undefined, string | null>;
+  last_result: ColumnType<unknown, string | null | undefined, string | null>;
+  created_at: CreatedAt;
+}
+
+export interface DailyUsageTable {
+  user_id: string;
+  /** Tashkent calendar day, `YYYY-MM-DD`. */
+  day: ColumnType<string, string, never>;
+  exercises_count: ColumnType<number, number | undefined, number>;
+  minutes_active: ColumnType<number, number | undefined, number>;
+}
+
 export interface TopicPrerequisitesTable {
   topic_id: string;
   prerequisite_id: string;
@@ -424,6 +498,10 @@ export interface Database {
   question_template_versions: QuestionTemplateVersionsTable;
   media_assets: MediaAssetsTable;
   media_keys: MediaKeysTable;
+  assessments: AssessmentsTable;
+  attempts: AttemptsTable;
+  attempt_items: AttemptItemsTable;
+  daily_usage: DailyUsageTable;
 }
 
 export type TableName = keyof Database;

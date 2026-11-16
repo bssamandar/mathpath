@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AssessmentModule } from './assessment/assessment.module';
 import { AuditModule } from './audit/audit.module';
 import { CommonModule } from './common/common.module';
 import { RedisModule } from './redis/redis.module';
@@ -28,6 +29,7 @@ import { IdentityModule } from './identity/identity.module';
     FamilyModule,
     ContentModule,
     MediaModule,
+    AssessmentModule,
   ],
 })
 export class AppModule {}
