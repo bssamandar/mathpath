@@ -648,3 +648,103 @@ section.done {
   color: var(--color-success);
   font-weight: 700;
 }
+
+/* ── Gamification (UX S3, S5, S6) ── */
+.reward {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(var(--space) * 2);
+  align-items: center;
+  margin-top: calc(var(--space) * 2);
+}
+.xp-chip {
+  display: inline-block;
+  padding: var(--space) calc(var(--space) * 3);
+  border-radius: 999px;
+  background: var(--color-primary);
+  color: var(--color-primary-text);
+  font-weight: 700;
+}
+.reward-item {
+  font-weight: 600;
+}
+.progress-card {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: calc(var(--space) * 4);
+  margin-bottom: calc(var(--space) * 6);
+  background: var(--color-surface);
+}
+.progress-card h3 {
+  font-size: 1rem;
+  margin: calc(var(--space) * 4) 0 calc(var(--space) * 2);
+}
+.progress-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: calc(var(--space) * 3);
+}
+.progress-card .level {
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin: 0;
+}
+.progress-card .hint {
+  margin: var(--space) 0;
+}
+.streak-count {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--color-muted-text);
+}
+.streak.active .streak-count {
+  color: var(--color-attention);
+}
+.bar {
+  height: 10px;
+  border-radius: 999px;
+  background: var(--color-muted-surface);
+  overflow: hidden;
+  margin: calc(var(--space) * 2) 0;
+}
+.bar.small {
+  height: 6px;
+  margin: var(--space) 0 0;
+  flex-basis: 100%;
+}
+.bar > span {
+  display: block;
+  height: 100%;
+  background: var(--color-primary);
+}
+.quests {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: calc(var(--space) * 3);
+}
+.quests li {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--space);
+}
+.quests li.done .bar > span {
+  background: var(--color-success);
+}
+.badges {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(var(--space) * 2);
+}
+.badge {
+  padding: var(--space) calc(var(--space) * 3);
+  border-radius: 999px;
+  background: var(--color-muted-surface);
+  font-size: 0.875rem;
+}

@@ -503,6 +503,25 @@ Hot counters live in Redis and are flushed here.
 **quests**: `id`, `code`, `day date`, `definition jsonb`; UQ (code, day).
 **user_quests**: PK (`user_id`, `quest_id`), `progress`, `completed_at NULL`.
 
+> **Implementation note (step 6.6a, migration `2026111901_gamification`):**
+>
+> - `xp_ledger` is not partitioned yet; an index on (`user_id`, `day`) is
+>   enough at MVP volume. `day` is the Tashkent day, for the daily cap, and
+>   `source_id` is text (a quest's source is `YYYY-MM-DD:code`). The id alone
+>   is the primary key; partitioning is a later migration.
+> - The badge catalogue is code (`apps/api/src/gamification/rules.ts`), and
+>   `user_badges` stores `badge_code`; names are in the apps' dictionaries.
+>   A `badges` table becomes worth it when staff create badges themselves.
+> - Quests come from `config/gamification.yaml` (`quests`), the same for
+>   everyone each day, so there is no `quests` table. `user_quests` is keyed
+>   (`user_id`, `day`, `code`) and a row is made when first needed; a CHECK
+>   keeps `completed_at` set exactly when `progress >= target`.
+> - `attempts.reward jsonb` keeps what a submission earned, so a repeated
+>   submit shows the same "+XP"; a practice answer keeps it in `last_result`.
+> - XP is written in the same transaction as the result, not through the
+>   outbox (architecture §4): the unique ledger key already makes it exactly
+>   once, and the learner sees "+XP" in the same response.
+
 **leagues**: `id`, `week_start date`, `tier smallint`, `cohort smallint`
 (groups of ~30, grade-banded so children compete with peers).
 **league_members**: PK (`league_id`, `user_id`), `weekly_xp`, `final_rank NULL`.

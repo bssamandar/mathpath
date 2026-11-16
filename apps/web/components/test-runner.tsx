@@ -13,6 +13,7 @@ import {
   type QuestionInstance,
   responseFor,
 } from '../lib/practice';
+import { RewardLine } from './gamification';
 import { useI18n } from './i18n-provider';
 import { MathText } from './math-text';
 import { AnswerArea } from './question';
@@ -200,6 +201,7 @@ export function TestResult({
             ? t('mastery.passed')
             : t('mastery.almost')}
       </p>
+      <RewardLine reward={result.reward} />
 
       {rec?.action === 'prerequisite_review' && rec.topicId && (
         <div className="next-card">

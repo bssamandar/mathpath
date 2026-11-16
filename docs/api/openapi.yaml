@@ -1104,6 +1104,8 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/GamificationSummary' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
 
   /leagues/current:
     get:
@@ -2818,7 +2820,9 @@ components:
         correctAnswer:
           type: [string, 'null']
           description: The right answer (inline LaTeX allowed), once a practice item is finished without it.
-        xpAwarded: { type: integer, description: Shown optimistically; the ledger is authoritative. }
+        reward:
+          $ref: '#/components/schemas/Reward'
+          description: Practice only. What this answer earned; a retried request returns the same.
         nextPosition: { type: [integer, 'null'], description: For adaptive diagnostics. }
 
     AttemptResult:
@@ -2869,6 +2873,28 @@ components:
                 Stable code: no_weak_prerequisite, not_mastered, low_mastery, stale,
                 needs_review, max_depth, max_per_day, gap_refreshed,
                 gap_added_to_path, review_passed, review_failed.
+        reward:
+          $ref: '#/components/schemas/Reward'
+          description: What submitting earned (mastery or review XP, the "finish a set" quest).
+
+    Reward:
+      type: object
+      description: |
+        XP, badges and quests that one answer or submission earned, for the
+        "+10 XP" on screen. Codes are stable; the app shows them in the
+        learner's language.
+      required: [xp, badges, questsCompleted]
+      properties:
+        xp: { type: integer, minimum: 0, description: Includes XP from quests finished by this event. }
+        badges: { type: array, items: { type: string } }
+        questsCompleted:
+          type: array
+          items:
+            type: object
+            required: [code, target]
+            properties:
+              code: { type: string }
+              target: { type: integer, description: 'For the name, such as "Earn 50 XP".' }
 
     TopicAssessmentStatus:
       type: object
@@ -2902,33 +2928,45 @@ components:
 
     GamificationSummary:
       type: object
-      required: [xpTotal, level, levelProgress, streak, badges, quests]
+      description: |
+        Badge and quest codes are stable; the app shows their names in the
+        learner's language. XP comes only from server results (PRD §8): a
+        practice answer right on the first try, a passed mastery test (once per
+        topic), a passed review and a finished daily quest.
+      required: [xpTotal, level, levelProgress, xpLeftToday, streak, badges, quests]
       properties:
         xpTotal: { type: integer }
-        level: { type: integer }
-        levelProgress: { type: number, minimum: 0, maximum: 1 }
+        level: { type: integer, minimum: 1 }
+        levelProgress: { type: number, minimum: 0, maximum: 1, description: Share of the way to the next level. }
+        xpLeftToday:
+          type: integer
+          description: XP left before today's cap (Tashkent day). Mastery and quest XP are not capped.
         streak:
           type: object
+          required: [current, longest, freezesLeft, activeToday]
           properties:
-            current: { type: integer }
+            current: { type: integer, description: 0 once the missed days outnumber the freezes. }
             longest: { type: integer }
-            freezesLeft: { type: integer }
+            freezesLeft: { type: integer, description: Earned by streak days, never bought. }
             activeToday: { type: boolean }
         badges:
           type: array
           items:
             type: object
+            required: [code, awardedAt]
             properties:
-              code: { type: string }
-              title: { type: string }
+              code:
+                type: string
+                enum: [first_correct, streak_3, streak_7, streak_30, mastery_1, mastery_5, mastery_10, level_5, level_10, quests_10]
               awardedAt: { type: string, format: date-time }
         quests:
           type: array
+          description: Today's quests from config/gamification.yaml.
           items:
             type: object
+            required: [code, progress, target, completed]
             properties:
               code: { type: string }
-              title: { type: string }
               progress: { type: integer }
               target: { type: integer }
               completed: { type: boolean }

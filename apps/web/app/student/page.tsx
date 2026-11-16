@@ -2,15 +2,20 @@
 
 import Link from 'next/link';
 import { useCallback } from 'react';
+import { ProgressCard } from '../../components/gamification';
 import { useI18n } from '../../components/i18n-provider';
 import { SignedIn } from '../../components/signed-in';
 import { ErrorText } from '../../components/ui';
 import { useLoad } from '../../components/use-load';
 import { api } from '../../lib/api';
+import type { GamificationSummary } from '../../lib/gamification';
 import type { Track } from '../../lib/lesson';
 import type { DueReview } from '../../lib/practice';
 
-/** Student home (UX S3): reviews that are due first, then the courses to choose from. */
+/**
+ * Student home (UX S3): level, streak and today's quests, then reviews that
+ * are due, then the courses to choose from.
+ */
 export default function StudentHomePage() {
   const { t, locale } = useI18n();
   const load = useCallback(
@@ -24,10 +29,14 @@ export default function StudentHomePage() {
   );
   // Reviews are a bonus on this screen: if they fail to load, the courses still show.
   const { data: due } = useLoad(loadDue);
+  // Progress is a bonus too: a failure to load it never hides the courses.
+  const loadProgress = useCallback(() => api<GamificationSummary>('/me/gamification'), []);
+  const { data: progress } = useLoad(loadProgress);
   const courses = data?.items.flatMap((track) => track.courses) ?? [];
   return (
     <SignedIn title={t('student.title')}>
       <ErrorText message={error} />
+      {progress && <ProgressCard summary={progress} />}
       {due && due.items.length > 0 && (
         <section className="list-section">
           <h2>{t('student.dueTitle')}</h2>

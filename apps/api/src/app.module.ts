@@ -10,6 +10,7 @@ import { ContentModule } from './content/content.module';
 import { MediaModule } from './media/media.module';
 import { DatabaseModule } from './database/database.module';
 import { FamilyModule } from './family/family.module';
+import { GamificationModule } from './gamification/gamification.module';
 import { HealthModule } from './health/health.module';
 import { IdentityModule } from './identity/identity.module';
 import { LearningModule } from './learning/learning.module';
@@ -32,6 +33,7 @@ import { LearningModule } from './learning/learning.module';
     ContentModule,
     MediaModule,
     LearningModule,
+    GamificationModule,
     AssessmentModule,
     BillingModule,
   ],

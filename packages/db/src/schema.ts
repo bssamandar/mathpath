@@ -370,6 +370,8 @@ export interface AttemptsTable {
   idempotency_key: ColumnType<string | null, string | null | undefined, never>;
   /** The gap router's recommendation after submit (6.4c). */
   recommendation: ColumnType<unknown, string | null | undefined, string | null>;
+  /** What submitting earned: { xp, badges, questsCompleted } (6.6). */
+  reward: ColumnType<unknown, string | null | undefined, string | null>;
   created_at: CreatedAt;
 }
 
@@ -478,6 +480,52 @@ export interface OrdersTable {
   promo_code_id: ColumnType<string | null, string | null | undefined, string | null>;
   created_at: ColumnType<Date, Date | undefined, never>;
   updated_at: ColumnType<Date, Date | undefined, Date>;
+}
+
+export type XpReason =
+  | 'first_try_correct'
+  | 'mastery_passed'
+  | 'review_passed'
+  | 'quest_completed'
+  | 'admin_adjustment';
+
+export interface XpLedgerTable {
+  id: string;
+  user_id: string;
+  amount: number;
+  reason: XpReason;
+  /** What earned it: `attempt_item`, `topic`, `attempt` or `quest`. */
+  source_type: string;
+  source_id: string;
+  /** The Tashkent calendar day, for the daily cap. */
+  day: ColumnType<string, string, never>;
+  created_at: ColumnType<Date, Date | undefined, never>;
+}
+
+export interface UserStatsTable {
+  user_id: string;
+  xp_total: ColumnType<number, number | undefined, number>;
+  level: ColumnType<number, number | undefined, number>;
+  current_streak: ColumnType<number, number | undefined, number>;
+  longest_streak: ColumnType<number, number | undefined, number>;
+  last_active_day: ColumnType<string | null, string | null | undefined, string | null>;
+  streak_freezes: ColumnType<number, number | undefined, number>;
+  updated_at: ColumnType<Date, Date | undefined, Date>;
+}
+
+export interface UserBadgesTable {
+  user_id: string;
+  badge_code: string;
+  awarded_at: ColumnType<Date, Date | undefined, never>;
+}
+
+export interface UserQuestsTable {
+  user_id: string;
+  day: string;
+  code: string;
+  progress: ColumnType<number, number | undefined, number>;
+  target: number;
+  completed_at: NullableTimestamp;
 }
 
 export type DiscountType = 'percent' | 'fixed';
@@ -676,6 +724,10 @@ export interface Database {
   promo_codes: PromoCodesTable;
   promo_redemptions: PromoRedemptionsTable;
   trials: TrialsTable;
+  xp_ledger: XpLedgerTable;
+  user_stats: UserStatsTable;
+  user_badges: UserBadgesTable;
+  user_quests: UserQuestsTable;
 }
 
 export type TableName = keyof Database;

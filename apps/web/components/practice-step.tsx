@@ -12,6 +12,7 @@ import {
   responseFor,
   type TopicStatus,
 } from '../lib/practice';
+import { RewardLine } from './gamification';
 import { useI18n } from './i18n-provider';
 import { MathText } from './math-text';
 import { AnswerArea, FeedbackPanel } from './question';
@@ -156,6 +157,7 @@ export function PracticeStep({ topicId, onProgress }: { topicId: string; onProgr
           {t('practice.summary', { score: summary.score, total: summary.maxScore })}
         </p>
       )}
+      {summary && <RewardLine reward={summary.reward} />}
       <p>
         {status.mastery.unlocked
           ? t('practice.unlocked')
