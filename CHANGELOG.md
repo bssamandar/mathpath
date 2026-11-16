@@ -170,6 +170,13 @@ project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   on Monday 00:05 Tashkent time and moves the top places up and the last ones
   down through five tiers. `GET /leagues/current` and a league page in the
   web app.
+- Parent dashboard: one card per child with this week's minutes against the
+  week before, topics mastered and one line that needs attention; a weekly
+  report (time per day, questions, XP, topics mastered, what needs attention
+  with a suggestion) with earlier weeks; adding a child with consent
+  confirmed by an SMS code. `GET /students/{id}/reports/weekly`. A
+  `confirm_action` code no longer needs the phone in the request: it goes to
+  the account's own number.
 - Errors are returned as RFC 9457 problem details with a stable `code` and request ID.
 - CI (format, lint, typecheck, tests with an 80% coverage gate, build) and security
   scanning (gitleaks, pnpm audit, OSV-Scanner, Semgrep, CodeQL); Renovate.

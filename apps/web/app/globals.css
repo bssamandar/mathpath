@@ -806,3 +806,89 @@ section.done {
 .progress-card .button {
   margin-top: calc(var(--space) * 4);
 }
+
+/* ── Parent: children overview and weekly report (UX S10, S11) ── */
+.child-card {
+  display: grid;
+  gap: var(--space);
+}
+.child-name {
+  font-weight: 700;
+  font-size: 1.125rem;
+}
+.trend {
+  color: var(--color-muted-text);
+}
+.alert-line {
+  color: var(--color-attention);
+  font-weight: 600;
+}
+.link-text {
+  color: var(--color-primary);
+  font-weight: 600;
+}
+.week-nav {
+  justify-content: space-between;
+}
+.report-section {
+  margin: calc(var(--space) * 6) 0;
+}
+.report-section h3 {
+  font-size: 1.0625rem;
+  margin-bottom: calc(var(--space) * 2);
+}
+.day-bars {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: calc(var(--space) * 2);
+  height: 160px;
+  align-items: end;
+}
+.day-bar {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  height: 100%;
+  gap: var(--space);
+}
+.bar-fill {
+  width: 100%;
+  max-height: calc(100% - 3rem);
+  border-radius: 6px 6px 0 0;
+  background: var(--color-primary);
+}
+.bar-value,
+.bar-label {
+  font-size: 0.8125rem;
+  color: var(--color-muted-text);
+}
+.plain-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: calc(var(--space) * 3);
+}
+.concerns li {
+  display: grid;
+  gap: var(--space);
+  padding-left: calc(var(--space) * 3);
+  border-left: 4px solid var(--color-attention);
+}
+.consents {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: calc(var(--space) * 3);
+  display: grid;
+  gap: calc(var(--space) * 3);
+}
+.field select {
+  min-height: var(--target-min);
+  font: inherit;
+  padding: 0 calc(var(--space) * 3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+}

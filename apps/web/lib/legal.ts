@@ -4,3 +4,6 @@
  * existing users to accept the new version.
  */
 export const TERMS_VERSION = '2026-11';
+
+/** Version of the parental consent text shown when a child is added (stored with the consent). */
+export const CONSENT_VERSION = '2026-11';

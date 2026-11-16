@@ -21,12 +21,17 @@ import { type IssuedSession, SessionService } from './session.service';
 
 const otpRequestBody = z
   .object({
-    phone: phoneE164,
+    // Optional for confirm_action: the code then goes to the account's own number.
+    phone: phoneE164.optional(),
     purpose: z.enum(['signup', 'login', 'confirm_action']),
     captchaToken: z.string().max(4096).optional(),
     deviceToken: deviceToken.optional(),
   })
-  .strict();
+  .strict()
+  .refine((body) => body.phone !== undefined || body.purpose === 'confirm_action', {
+    path: ['phone'],
+    message: 'required',
+  });
 
 const otpVerifyBody = z
   .object({
@@ -82,10 +87,10 @@ export class AuthController {
     if (body.purpose === 'confirm_action') {
       // Only for a signed-in user, and only to their own number.
       if (!req.auth) throw new ProblemException(401, 'UNAUTHENTICATED', 'Please sign in.');
-      await this.auth.assertOwnPhone(req.auth.userId, body.phone);
+      body.phone = await this.auth.ownPhone(req.auth.userId, body.phone);
     }
     return this.otp.request({
-      phone: body.phone,
+      phone: body.phone!,
       purpose: body.purpose,
       ipPrefix: client.ipPrefix,
       automationSuspected: client.automationSuspected,

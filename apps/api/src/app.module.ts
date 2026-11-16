@@ -4,6 +4,7 @@ import { AuditModule } from './audit/audit.module';
 import { BillingModule } from './billing/billing.module';
 import { CommonModule } from './common/common.module';
 import { RedisModule } from './redis/redis.module';
+import { ReportingModule } from './reporting/reporting.module';
 import { RiskModule } from './risk/risk.module';
 import { AppConfigModule } from './config/config.module';
 import { ContentModule } from './content/content.module';
@@ -36,6 +37,7 @@ import { LearningModule } from './learning/learning.module';
     GamificationModule,
     AssessmentModule,
     BillingModule,
+    ReportingModule,
   ],
 })
 export class AppModule {}

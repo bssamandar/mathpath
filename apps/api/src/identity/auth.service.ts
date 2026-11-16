@@ -237,17 +237,23 @@ export class AuthService {
   }
 
   /** @throws ProblemException 400 unless `phone` is the user's own number. */
-  async assertOwnPhone(userId: string, phone: string): Promise<void> {
+  /**
+   * The signed-in account's phone, for a `confirm_action` code. A phone the
+   * client sends must be that same number.
+   * @throws ProblemException 400 PHONE_MISMATCH.
+   */
+  async ownPhone(userId: string, phone?: string): Promise<string> {
     const user = await this.db
       .selectFrom('users')
       .select('phone_e164')
       .where('id', '=', userId)
       .executeTakeFirst();
-    if (user?.phone_e164 !== phone) {
+    if (!user?.phone_e164 || (phone !== undefined && user.phone_e164 !== phone)) {
       throw new ProblemException(400, 'PHONE_MISMATCH', 'Use the phone number of your account.', {
         errors: [{ field: 'phone', message: 'must be the phone number of the signed-in account' }],
       });
     }
+    return user.phone_e164;
   }
 
   private assertActive(status: string): void {
