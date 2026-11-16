@@ -48,6 +48,13 @@ export interface IssuedSession {
   csrfToken: string;
 }
 
+export interface SessionLimits {
+  /** Concurrent sessions a student may have (C-24, config/limits.yaml). */
+  maxStudentSessions?: number;
+  /** Total and idle lifetime of a staff session (C-08, config/auth.yaml). */
+  staffSession?: { absoluteHours: number; idleMinutes: number };
+}
+
 const invalidRefresh = (): ProblemException =>
   new ProblemException(401, 'SESSION_EXPIRED', 'Please sign in again.');
 
@@ -60,8 +67,7 @@ export class SessionService {
     private readonly clock: Clock,
     private readonly ttl: { accessTokenTtlMinutes: number; refreshTokenTtlDays: number },
     private readonly audit: AuditService,
-    /** Concurrent sessions a student may have (C-24, config/limits.yaml). */
-    private readonly maxStudentSessions: number = Number.POSITIVE_INFINITY,
+    private readonly limits: SessionLimits = {},
   ) {}
 
   /**
@@ -155,6 +161,8 @@ export class SessionService {
           's.user_id',
           's.revoked_at',
           's.expires_at as session_expires_at',
+          's.created_at as session_created_at',
+          's.last_seen_at',
           's.mfa_verified',
         ])
         .where('rt.token_hash', '=', sha256(refreshToken))
@@ -181,6 +189,11 @@ export class SessionService {
       }
       if (row.expires_at <= now || row.session_expires_at <= now)
         return { kind: 'invalid' as const };
+      const roles = await this.rolesOf(row.user_id, trx);
+      if (this.staffSessionOver(roles, row.session_created_at, row.last_seen_at, now)) {
+        await this.revokeIn(trx, row.session_id, 'expired', now);
+        return { kind: 'expired' as const, sessionId: row.session_id };
+      }
 
       const newId_ = newId();
       await trx
@@ -208,11 +221,12 @@ export class SessionService {
         kind: 'ok' as const,
         sessionId: row.session_id,
         userId: row.user_id,
+        roles,
         mfaVerified: row.mfa_verified,
       };
     });
 
-    if (outcome.kind === 'reused') {
+    if (outcome.kind === 'reused' || outcome.kind === 'expired') {
       await this.revoked.add(outcome.sessionId, this.ttl.accessTokenTtlMinutes * 60_000);
     }
     if (outcome.kind !== 'ok') throw invalidRefresh();
@@ -220,8 +234,59 @@ export class SessionService {
     return this.issue({
       userId: outcome.userId,
       sessionId: outcome.sessionId,
-      roles: await this.rolesOf(outcome.userId),
+      roles: outcome.roles,
       mfaVerified: outcome.mfaVerified,
+      refreshToken: newToken,
+      refreshExpiresAt,
+    });
+  }
+
+  /**
+   * Marks a session as having passed 2FA and issues new tokens that say so.
+   * The session's unused refresh tokens are retired, so only the new pair
+   * carries the stronger session forward.
+   * @throws ProblemException 401 when the session has ended.
+   */
+  async elevate(sessionId: string): Promise<IssuedSession> {
+    const now = this.clock.now();
+    const newToken = randomToken();
+    const refreshExpiresAt = this.refreshExpiry(now);
+    const userId = await this.db.transaction().execute(async (trx) => {
+      const session = await trx
+        .updateTable('sessions')
+        .set({ mfa_verified: true, last_seen_at: now, expires_at: refreshExpiresAt })
+        .where('id', '=', sessionId)
+        .where('revoked_at', 'is', null)
+        .where('expires_at', '>', now)
+        .returning('user_id')
+        .executeTakeFirst();
+      if (!session) return null;
+      const tokenId = newId();
+      await trx
+        .insertInto('refresh_tokens')
+        .values({
+          id: tokenId,
+          session_id: sessionId,
+          token_hash: sha256(newToken),
+          expires_at: refreshExpiresAt,
+          created_at: now,
+        })
+        .execute();
+      await trx
+        .updateTable('refresh_tokens')
+        .set({ used_at: now, replaced_by: tokenId })
+        .where('session_id', '=', sessionId)
+        .where('id', '<>', tokenId)
+        .where('used_at', 'is', null)
+        .execute();
+      return session.user_id;
+    });
+    if (!userId) throw invalidRefresh();
+    return this.issue({
+      userId,
+      sessionId,
+      roles: await this.rolesOf(userId),
+      mfaVerified: true,
       refreshToken: newToken,
       refreshExpiresAt,
     });
@@ -270,7 +335,7 @@ export class SessionService {
       .orderBy('created_at', 'desc')
       .orderBy('id', 'desc')
       .execute();
-    for (const { id } of live.slice(this.maxStudentSessions)) {
+    for (const { id } of live.slice(this.limits.maxStudentSessions ?? Number.POSITIVE_INFINITY)) {
       await this.revoke(id, 'session_limit', { userId, roles: ['student'] }, client);
     }
   }
@@ -294,8 +359,23 @@ export class SessionService {
       .execute();
   }
 
-  private async rolesOf(userId: string): Promise<Role[]> {
-    const rows = await this.db
+  /**
+   * Staff sessions are short (C-08): a stolen staff session reaches content
+   * and user data, so it must not live for the 30 days a family session does.
+   * Access tokens last 15 minutes, so an active session refreshes well within
+   * the idle limit.
+   */
+  private staffSessionOver(roles: Role[], createdAt: Date, lastSeenAt: Date, now: Date): boolean {
+    const rule = this.limits.staffSession;
+    if (!rule || !roles.some((r) => STAFF_ROLES.has(r))) return false;
+    const age = now.getTime() - createdAt.getTime();
+    const idle = now.getTime() - lastSeenAt.getTime();
+    return age > rule.absoluteHours * 3_600_000 || idle > rule.idleMinutes * 60_000;
+  }
+
+  /** @param db - Pass the transaction when called inside one. */
+  private async rolesOf(userId: string, db: Kysely<Database> = this.db): Promise<Role[]> {
+    const rows = await db
       .selectFrom('user_roles')
       .select('role')
       .where('user_id', '=', userId)

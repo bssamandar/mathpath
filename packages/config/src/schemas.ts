@@ -203,6 +203,20 @@ export const authSchema = z
       })
       .strict()
       .refine((p) => p.maxLength >= p.minLength, 'maxLength must be at least minLength'),
+    mfa: z
+      .object({
+        issuer: z.string().min(1).max(32),
+        recoveryCodeCount: z.number().int().min(5).max(20),
+        verifyFailures: window,
+        enrolmentTtlMinutes: z.number().int().min(1).max(60),
+      })
+      .strict(),
+    staffSession: z
+      .object({
+        absoluteHours: z.number().int().min(1).max(24),
+        idleMinutes: z.number().int().min(5).max(240),
+      })
+      .strict(),
   })
   .strict();
 
