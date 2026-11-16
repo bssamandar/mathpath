@@ -12,3 +12,6 @@ rateLimits:
   loginFailuresPerAccount: { limit: 5, windowMinutes: 15 }
   loginFailuresPerIpPrefix: { limit: 30, windowMinutes: 15 }
   childPinFailures: { limit: 5, windowMinutes: 30 }
+  # After this many failures the account is locked for the rest of the window
+  # and the owner gets an SMS (C-04).
+  accountLock: { limit: 10, windowMinutes: 60 }

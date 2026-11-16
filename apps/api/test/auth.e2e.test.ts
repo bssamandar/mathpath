@@ -1,7 +1,7 @@
-import request from 'supertest';
+import type request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { newId } from '@mathpath/db';
-import { createTestApp, type TestApp } from './helpers';
+import { browser, createTestApp, type TestApp } from './helpers';
 
 const PHONE = '+998901234567';
 const PASSWORD = 'quiet-river-71-lamp';
@@ -17,7 +17,7 @@ afterEach(async () => {
   await t.close();
 });
 
-const http = () => request(t.app.getHttpServer());
+const http = () => browser(t.app.getHttpServer());
 
 /** Reads one cookie's value from a response's Set-Cookie headers. */
 function cookie(res: request.Response, name: string): string | undefined {

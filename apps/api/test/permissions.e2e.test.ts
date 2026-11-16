@@ -1,10 +1,9 @@
 import { Controller, Get, Post } from '@nestjs/common';
 import { sql } from 'kysely';
-import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { verifyAuditChain } from '../src/audit/audit.service';
 import { Access, needsMfaFor, permissionsFor } from '../src/identity/permissions';
-import { createTestApp, type TestApp } from './helpers';
+import { browser, createTestApp, type TestApp } from './helpers';
 
 /** Routes that exist only in this test, to exercise the guard. */
 @Controller('probe')
@@ -45,7 +44,7 @@ afterEach(async () => {
   await t.close();
 });
 
-const http = () => request(t.app.getHttpServer());
+const http = () => browser(t.app.getHttpServer());
 
 async function signUp(): Promise<{ token: string; userId: string }> {
   const otp = await http().post('/api/v1/auth/otp').send({ phone: PHONE, purpose: 'signup' });

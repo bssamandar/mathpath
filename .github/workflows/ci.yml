@@ -20,6 +20,15 @@ jobs:
     name: Lint, typecheck, test, build
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    # Real Redis for the rate-limiter and counter scripts (src/common/redis.test.ts).
+    services:
+      redis:
+        image: redis:7.4-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      TEST_REDIS_URL: redis://localhost:6379
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0

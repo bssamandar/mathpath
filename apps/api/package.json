@@ -22,6 +22,7 @@
     "@node-rs/argon2": "2.2.2",
     "cookie-parser": "1.4.7",
     "helmet": "8.1.0",
+    "ioredis": "6.0.0",
     "jose": "6.2.14",
     "kysely": "0.28.18",
     "reflect-metadata": "0.2.2",

@@ -30,6 +30,15 @@ project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `x-permission` values in sync (C-09).
 - Audit log with a SHA-256 hash chain for sign-up, sign-in, failed sign-in,
   logout and refresh-token reuse, plus `verifyAuditChain` to detect edits (C-33).
+- Risk scoring for code requests and sign-in (security plan §6.2): flagged
+  phone prefixes, automated clients, per-network code velocity, recent failures
+  and new networks; actions from config (allow, Turnstile CAPTCHA, interactive
+  CAPTCHA, block with a manual review); every decision stored as a `risk_event`.
+- SMS spend guard with hourly and daily caps in Tashkent time; at the cap every
+  code request needs a CAPTCHA (C-20). Account lock after 10 failures in an hour,
+  with an SMS to the owner (C-04).
+- Redis-backed rate limiter, counters and revoked-session list (Lua scripts,
+  atomic across instances); Eskiz.uz SMS sender; Cloudflare Turnstile verifier.
 - `config/auth.yaml` for token lifetimes, OTP resend delay and password rules.
 - Migration `2026111502_terms_acceptance`: the terms version each user accepted.
 - Errors are returned as RFC 9457 problem details with a stable `code` and request ID.
