@@ -1,0 +1,6 @@
+# Reviewed false positives (security plan §11). One fingerprint per line:
+# commit:file:rule:line. Fix the source too, so only the historic commit is listed.
+
+# A fake HLS IV (0x0123…cdef) in a test playlist, not a key; replaced by TEST_IV
+# in the next commit.
+7fd45065026091fea4ec5c2cf41b458e5cedeb0e:apps/api/test/media.e2e.test.ts:generic-api-key:134
