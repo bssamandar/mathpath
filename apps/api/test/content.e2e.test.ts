@@ -1,6 +1,10 @@
 import { DEMO_IDS, newId, type Role, seedDemoContent } from '@mathpath/db';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { verifyAuditChain } from '../src/audit/audit.service';
+import type { AppConfig } from '@mathpath/config';
+import { AuditService, verifyAuditChain } from '../src/audit/audit.service';
+import { Clock } from '../src/common/clock';
+import { BUSINESS_RULES } from '../src/config/tokens';
+import { StudioService } from '../src/content/studio.service';
 import { SessionService } from '../src/identity/session.service';
 import { browser, createTestApp, type TestApp } from './helpers';
 
@@ -123,6 +127,32 @@ async function publish(topicId: string, author: { auth: string }, reviewer: { au
   return draft.body.id as string;
 }
 
+/** One admin edits, approves and publishes a new version alone; returns its ID. */
+async function selfPublish(topicId: string, admin: { auth: string }, content: typeof lesson) {
+  const draft = await http()
+    .post(`/api/v1/studio/topics/${topicId}/versions`)
+    .set('Authorization', admin.auth)
+    .expect(201);
+  await http()
+    .put(`/api/v1/studio/topic-versions/${draft.body.id}`)
+    .set('Authorization', admin.auth)
+    .set('If-Match', draft.headers.etag as string)
+    .send(content)
+    .expect(200);
+  for (const [step, body] of [
+    ['submit', {}],
+    ['review', { decision: 'approved' }],
+    ['publish', {}],
+  ] as const) {
+    await http()
+      .post(`/api/v1/studio/versions/${draft.body.id}/${step}`)
+      .set('Authorization', admin.auth)
+      .send(body)
+      .expect(200);
+  }
+  return draft.body.id as string;
+}
+
 describe('studio workflow (C-18)', () => {
   it('takes a lesson from draft to published and audits each step', async () => {
     const { free } = await catalogue();
@@ -169,6 +199,64 @@ describe('studio workflow (C-18)', () => {
       .send({ decision: 'approved' })
       .expect(403);
     expect(res.body.code).toBe('FOUR_EYES');
+  });
+
+  it('lets an admin fix a published lesson alone while adminSelfReview is on', async () => {
+    const { free } = await catalogue();
+    const v1 = await publish(free, await userWith(['author']), await userWith(['reviewer']));
+    const admin = await userWith(['admin']);
+    const learner = await userWith(['student']);
+
+    const fixed = { ...lesson, title: { ...lesson.title, 'uz-Latn': 'Kasr nima? (tuzatilgan)' } };
+    const v2 = await selfPublish(free, admin, fixed);
+
+    const seen = await http()
+      .get(`/api/v1/topics/${free}/lesson?locale=uz-Latn`)
+      .set('Authorization', learner.auth)
+      .expect(200);
+    expect(seen.body).toMatchObject({ versionId: v2, title: 'Kasr nima? (tuzatilgan)' });
+    const old = await t.db
+      .selectFrom('topic_versions')
+      .select('status')
+      .where('id', '=', v1)
+      .executeTakeFirstOrThrow();
+    expect(old.status).toBe('archived');
+
+    const approval = await t.db
+      .selectFrom('audit_log')
+      .select('metadata')
+      .where('action', '=', 'content.review_approved')
+      .where('target_id', '=', v2)
+      .executeTakeFirstOrThrow();
+    expect(approval.metadata).toMatchObject({ selfReview: true });
+    expect(await verifyAuditChain(t.db)).toMatchObject({ ok: true });
+  });
+
+  it('applies four-eyes to admins too once adminSelfReview is off', async () => {
+    const rules = t.app.get<AppConfig>(BUSINESS_RULES);
+    const strict = new StudioService(t.db, t.app.get(AuditService), t.app.get(Clock), {
+      ...rules.content,
+      adminSelfReview: false,
+    });
+    const { free } = await catalogue();
+    const admin = await userWith(['admin']);
+    const draft = await http()
+      .post(`/api/v1/studio/topics/${free}/versions`)
+      .set('Authorization', admin.auth)
+      .expect(201);
+    await http()
+      .put(`/api/v1/studio/topic-versions/${draft.body.id}`)
+      .set('Authorization', admin.auth)
+      .set('If-Match', draft.headers.etag as string)
+      .send(lesson)
+      .expect(200);
+    await http()
+      .post(`/api/v1/studio/versions/${draft.body.id}/submit`)
+      .set('Authorization', admin.auth)
+      .expect(200);
+    await expect(
+      strict.review({ userId: admin.id, roles: ['admin'] }, draft.body.id, 'approved', []),
+    ).rejects.toMatchObject({ code: 'FOUR_EYES' });
   });
 
   it('refuses a stale save (lost update) with 412', async () => {
