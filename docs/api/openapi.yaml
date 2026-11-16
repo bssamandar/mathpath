@@ -106,8 +106,13 @@ paths:
                 phone: { $ref: '#/components/schemas/PhoneE164' }
                 purpose:
                   type: string
-                  enum: [signup, login, reset_password, change_phone]
-                  description: '`reset_password` and `change_phone` are not implemented yet and return 400.'
+                  enum: [signup, login, confirm_action, reset_password, change_phone]
+                  description: |
+                    `confirm_action` proves possession of the phone before an important
+                    action, such as consent for a child (C-30). It needs a signed-in user
+                    (401 otherwise) and only the account's own number (400 `PHONE_MISMATCH`).
+                    A code works only for the purpose it was requested for.
+                    `reset_password` and `change_phone` are not implemented yet and return 400.
                 captchaToken: { type: string, maxLength: 4096 }
                 deviceToken: { $ref: '#/components/schemas/DeviceToken' }
       responses:
@@ -249,8 +254,12 @@ paths:
       operationId: loginChild
       summary: Sign a child in with family code and PIN.
       description: |
-        Children have no phone or password. Locks the PIN after N failures
-        (config) and notifies the parent.
+        Children have no phone or password. The family code is case-insensitive
+        and the nickname is matched ignoring case. A wrong code, nickname or PIN
+        all return the same 401. After `childPinFailures` wrong PINs the profile
+        is locked (423 `PROFILE_LOCKED`) and the parent gets an SMS; failures per
+        family code and per network are limited too (429). A student keeps at
+        most `sessions.maxConcurrentPerStudent` sessions; the oldest is signed out.
       security: []
       x-permission: public
       requestBody:
@@ -262,7 +271,7 @@ paths:
               required: [familyCode, nickname, pin]
               additionalProperties: false
               properties:
-                familyCode: { type: string, pattern: '^[A-Z0-9]{6,8}$' }
+                familyCode: { type: string, pattern: '^[A-Za-z0-9]{6,8}$' }
                 nickname: { type: string, maxLength: 32 }
                 pin: { type: string, pattern: '^[0-9]{4,6}$' }
                 deviceToken: { $ref: '#/components/schemas/DeviceToken' }
@@ -488,8 +497,11 @@ paths:
       summary: Add a child profile with parental consent.
       description: |
         Consent is recorded with the policy version and evidence. The parent
-        confirms with a fresh OTP (`consentOtpChallengeId` + code) to make the
-        consent verifiable.
+        confirms with a fresh `confirm_action` code sent to their own phone
+        (`consent.otpChallengeId` + `consent.otpCode`) to make the consent
+        verifiable. Errors: 401 `OTP_*` for a bad code, 403
+        `CONSENT_NOT_CONFIRMED` for another account's code, 409 `NICKNAME_TAKEN`,
+        422 `CONSENT_LEARNING_REQUIRED` or `PIN_TOO_SIMPLE`.
       x-permission: family:manage
       requestBody:
         required: true
@@ -513,6 +525,9 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Child' }
         '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/Unprocessable' }
 
   /children/{childId}:

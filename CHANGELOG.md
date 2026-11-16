@@ -39,6 +39,13 @@ project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   with an SMS to the owner (C-04).
 - Redis-backed rate limiter, counters and revoked-session list (Lua scripts,
   atomic across instances); Eskiz.uz SMS sender; Cloudflare Turnstile verifier.
+- Children and family (`apps/api` family module): parents add a child with
+  consent confirmed by a `confirm_action` SMS code to their own phone; consent
+  history is kept, never edited; nicknames are unique per family; trivial PINs
+  are refused. Children sign in with family code, nickname and PIN; wrong PINs
+  lock the profile and notify the parent; failures per family code are limited.
+  Parents can switch to a child profile (linked session). A student keeps at
+  most two live sessions (C-24).
 - `config/auth.yaml` for token lifetimes, OTP resend delay and password rules.
 - Migration `2026111502_terms_acceptance`: the terms version each user accepted.
 - Errors are returned as RFC 9457 problem details with a stable `code` and request ID.

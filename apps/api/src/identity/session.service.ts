@@ -33,7 +33,7 @@ export interface ClientContext {
 }
 
 /** How the user proved who they are; recorded in the audit log. */
-export type SignInMethod = 'password' | 'otp' | 'registration';
+export type SignInMethod = 'password' | 'otp' | 'registration' | 'child_pin' | 'switch_profile';
 
 /** Everything the client receives when a session starts or is refreshed. */
 export interface IssuedSession {
@@ -60,10 +60,20 @@ export class SessionService {
     private readonly clock: Clock,
     private readonly ttl: { accessTokenTtlMinutes: number; refreshTokenTtlDays: number },
     private readonly audit: AuditService,
+    /** Concurrent sessions a student may have (C-24, config/limits.yaml). */
+    private readonly maxStudentSessions: number = Number.POSITIVE_INFINITY,
   ) {}
 
-  /** Starts a session for a user who just proved who they are. */
-  async start(userId: string, client: ClientContext, method: SignInMethod): Promise<IssuedSession> {
+  /**
+   * Starts a session for a user who just proved who they are.
+   * @param options.parentSessionId - Set when a parent opened a child's profile on their device.
+   */
+  async start(
+    userId: string,
+    client: ClientContext,
+    method: SignInMethod,
+    options: { parentSessionId?: string } = {},
+  ): Promise<IssuedSession> {
     const now = this.clock.now();
     const refreshExpiresAt = this.refreshExpiry(now);
     const sessionId = newId();
@@ -76,6 +86,7 @@ export class SessionService {
         .values({
           id: sessionId,
           user_id: userId,
+          parent_session_id: options.parentSessionId ?? null,
           ip_prefix: client.ipPrefix,
           user_agent_summary: client.userAgentSummary,
           created_at: now,
@@ -108,6 +119,8 @@ export class SessionService {
         trx,
       );
     });
+    // After the new session exists, so the limit counts it.
+    if (roles.includes('student')) await this.enforceStudentLimit(userId, client);
 
     return this.issue({
       userId,
@@ -241,6 +254,25 @@ export class SessionService {
       );
     });
     await this.revoked.add(sessionId, this.ttl.accessTokenTtlMinutes * 60_000);
+  }
+
+  /**
+   * Account sharing (C-24): a student keeps at most N live sessions; the
+   * oldest are signed out. The family sees them in the session list.
+   */
+  private async enforceStudentLimit(userId: string, client: ClientContext): Promise<void> {
+    const live = await this.db
+      .selectFrom('sessions')
+      .select('id')
+      .where('user_id', '=', userId)
+      .where('revoked_at', 'is', null)
+      .where('expires_at', '>', this.clock.now())
+      .orderBy('created_at', 'desc')
+      .orderBy('id', 'desc')
+      .execute();
+    for (const { id } of live.slice(this.maxStudentSessions)) {
+      await this.revoke(id, 'session_limit', { userId, roles: ['student'] }, client);
+    }
   }
 
   /** The CSRF token for a session: an HMAC of its ID, so nothing is stored (C-07). */

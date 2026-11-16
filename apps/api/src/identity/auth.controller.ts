@@ -9,20 +9,20 @@ import { Body, Controller, HttpCode, Post, Req, Res } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { Clock } from '../common/clock';
-import { ipPrefix, looksAutomated, userAgentSummary } from '../common/client-info';
-import { ProblemException, requestIdOf } from '../common/problem';
+import { ProblemException } from '../common/problem';
 import { deviceToken, locale, parseInput, personName, phoneE164 } from '../common/validation';
 import { AuthService } from './auth.service';
 import { type AuthedRequest, SkipCsrf } from './auth.guard';
 import { Access } from './permissions';
-import { clearSessionCookies, REFRESH_COOKIE, setSessionCookies } from './cookies';
+import { clearSessionCookies, REFRESH_COOKIE } from './cookies';
+import { clientOf, sendSession, type SessionInfo } from './http';
 import { OtpService } from './otp.service';
-import { type ClientContext, type IssuedSession, SessionService } from './session.service';
+import { type IssuedSession, SessionService } from './session.service';
 
 const otpRequestBody = z
   .object({
     phone: phoneE164,
-    purpose: z.enum(['signup', 'login']),
+    purpose: z.enum(['signup', 'login', 'confirm_action']),
     captchaToken: z.string().max(4096).optional(),
     deviceToken: deviceToken.optional(),
   })
@@ -63,17 +63,6 @@ const loginBody = z
 
 const refreshBody = z.object({ refreshToken: z.string().min(1).max(256).optional() }).strict();
 
-/** The `SessionInfo` response body. */
-export interface SessionInfo {
-  userId: string;
-  roles: string[];
-  mfaRequired: boolean;
-  accessExpiresAt: string;
-  csrfToken: string;
-  accessToken?: string;
-  refreshToken?: string;
-}
-
 @Controller('auth')
 export class AuthController {
   constructor(
@@ -87,9 +76,14 @@ export class AuthController {
   @Post('otp')
   @Access('public')
   @HttpCode(202)
-  async requestOtp(@Body() raw: unknown, @Req() req: Request) {
+  async requestOtp(@Body() raw: unknown, @Req() req: AuthedRequest) {
     const body = parseInput(otpRequestBody, raw);
     const client = clientOf(req);
+    if (body.purpose === 'confirm_action') {
+      // Only for a signed-in user, and only to their own number.
+      if (!req.auth) throw new ProblemException(401, 'UNAUTHENTICATED', 'Please sign in.');
+      await this.auth.assertOwnPhone(req.auth.userId, body.phone);
+    }
     return this.otp.request({
       phone: body.phone,
       purpose: body.purpose,
@@ -189,26 +183,6 @@ export class AuthController {
   }
 
   private respond(req: Request, res: Response, session: IssuedSession): SessionInfo {
-    const info: SessionInfo = {
-      userId: session.userId,
-      roles: session.roles,
-      mfaRequired: session.mfaRequired,
-      accessExpiresAt: session.accessExpiresAt.toISOString(),
-      csrfToken: session.csrfToken,
-    };
-    if (req.get('x-client-type') === 'mobile') {
-      return { ...info, accessToken: session.accessToken, refreshToken: session.refreshToken };
-    }
-    setSessionCookies(res, session, this.clock.now());
-    return info;
+    return sendSession(req, res, session, this.clock.now());
   }
-}
-
-function clientOf(req: Request): ClientContext {
-  return {
-    ipPrefix: ipPrefix(req.ip),
-    userAgentSummary: userAgentSummary(req.get('user-agent')),
-    requestId: requestIdOf(req),
-    automationSuspected: looksAutomated(req.get('user-agent')),
-  };
 }
