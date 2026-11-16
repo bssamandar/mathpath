@@ -50,6 +50,12 @@ project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `/auth/mfa/verify`) with secrets encrypted at rest, replay protection per time
   step, ten one-time recovery codes and a per-user limit on wrong codes. Staff
   sessions end after 8 hours, or 30 minutes idle (`config/auth.yaml`).
+- Web app sign-in screens (`apps/web`): welcome with language choice, parent
+  sign-up (phone, SMS code, name and password), parent sign-in, student sign-in
+  with family code and PIN, and placeholder home pages. Texts in Uzbek, Russian
+  and English. Turnstile appears when the API asks for a CAPTCHA. Tokens stay
+  in HttpOnly cookies; refreshes are serialised across tabs (Web Locks). A
+  per-request CSP nonce is set in middleware.
 - `config/auth.yaml` for token lifetimes, OTP resend delay and password rules.
 - Migration `2026111502_terms_acceptance`: the terms version each user accepted.
 - Errors are returned as RFC 9457 problem details with a stable `code` and request ID.

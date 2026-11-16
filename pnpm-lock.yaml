@@ -176,6 +176,12 @@ importers:
       '@types/react-dom':
         specifier: 19.1.11
         version: 19.1.11(@types/react@19.1.17)
+      '@vitest/coverage-v8':
+        specifier: 4.1.12
+        version: 4.1.12(vitest@4.1.12)
+      vitest:
+        specifier: 4.1.12
+        version: 4.1.12(@types/node@22.19.1)(@vitest/coverage-v8@4.1.12)(jiti@2.6.1)(yaml@2.9.1)
 
   apps/worker:
     dependencies:
