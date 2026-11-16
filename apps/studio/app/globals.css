@@ -592,3 +592,110 @@ input.code {
 .math-text .katex {
   font-size: 1.1em;
 }
+
+/* Admin console (users, risk queue, audit log) */
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.9em;
+}
+.nowrap {
+  white-space: nowrap;
+}
+.badge-danger {
+  color: var(--color-danger);
+  border-color: var(--color-danger);
+}
+.search-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: calc(var(--space) * 3);
+}
+.search-row .field {
+  flex: 1 1 320px;
+  max-width: 480px;
+}
+.search-row > .button {
+  margin-top: calc(var(--space) * 6);
+}
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(var(--space) * 2);
+  margin: calc(var(--space) * 4) 0;
+}
+.review-card {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: calc(var(--space) * 4);
+  margin-bottom: calc(var(--space) * 4);
+}
+.review-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: calc(var(--space) * 3);
+}
+.review-head .q-bank-badges {
+  grid-column: 2;
+  align-items: flex-start;
+}
+.radios {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+}
+.radios legend {
+  font-weight: 700;
+}
+.table-wrap {
+  overflow-x: auto;
+  margin-bottom: calc(var(--space) * 4);
+}
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+.data-table th,
+.data-table td {
+  text-align: left;
+  vertical-align: top;
+  padding: calc(var(--space) * 2);
+  border-bottom: 1px solid var(--color-muted-surface);
+}
+.data-table th {
+  border-bottom-color: var(--color-border);
+}
+.data-table .details {
+  color: var(--color-muted-text);
+  overflow-wrap: anywhere;
+  min-width: 240px;
+}
+.filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 0 calc(var(--space) * 4);
+  align-items: start;
+}
+.filters .actions {
+  grid-column: 1 / -1;
+  margin-top: 0;
+}
+.q-bank-wide {
+  grid-column: 1 / -1;
+}
+.q-bank li > .q-bank-badges {
+  align-self: start;
+}
+.checks .hint {
+  flex-basis: 100%;
+  margin: 0;
+}
+.topbar {
+  flex-wrap: wrap;
+}
+.topbar nav {
+  flex-wrap: wrap;
+}

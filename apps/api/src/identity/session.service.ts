@@ -322,6 +322,27 @@ export class SessionService {
   }
 
   /**
+   * Ends every live session of a user now, including the current access
+   * tokens: used when an admin locks an account or takes a role away, so the
+   * change does not wait for tokens to expire. The caller writes the audit
+   * entry for the admin action.
+   * @returns How many sessions were ended.
+   */
+  async endAll(userId: string, reason: RevokeReason): Promise<number> {
+    const ended = await this.db
+      .updateTable('sessions')
+      .set({ revoked_at: this.clock.now(), revoke_reason: reason })
+      .where('user_id', '=', userId)
+      .where('revoked_at', 'is', null)
+      .returning('id')
+      .execute();
+    for (const { id } of ended) {
+      await this.revoked.add(id, this.ttl.accessTokenTtlMinutes * 60_000);
+    }
+    return ended.length;
+  }
+
+  /**
    * Account sharing (C-24): a student keeps at most N live sessions; the
    * oldest are signed out. The family sees them in the session list.
    */
