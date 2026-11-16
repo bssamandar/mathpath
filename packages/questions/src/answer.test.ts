@@ -2,6 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { check, readNumber } from './answer';
 
 describe('readNumber', () => {
+  it('rejects long input before parsing it', () => {
+    expect(readNumber(`1${' '.repeat(10_000)}x`)).toBeNull();
+    expect(readNumber(`${' '.repeat(30)}3   /   4${' '.repeat(30)}`)).toMatchObject({
+      form: 'fraction',
+    });
+  });
+
   it('reads the ways learners write numbers', () => {
     expect(readNumber(' 12 ')).toMatchObject({ form: 'integer' });
     expect(String(readNumber('2,5')!.value)).toBe('5/2');

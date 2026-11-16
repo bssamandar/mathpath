@@ -22,11 +22,13 @@ export interface ReadNumber {
 
 /** @returns null when the text is not a number we understand. */
 export function readNumber(input: string): ReadNumber | null {
+  // Bound the raw input before any regex runs, so no pattern sees a long string.
+  if (input.length > 80) return null;
   const text = input
     .trim()
     .replace(/[−–]/g, '-')
     .replace(/\s+/g, ' ')
-    .replace(/\s*\/\s*/g, '/');
+    .replace(/ ?\/ ?/g, '/');
   if (text.length === 0 || text.length > 40) return null;
 
   const mixed = /^(-?)(\d{1,12}) (\d{1,12})\/(\d{1,12})$/.exec(text);
