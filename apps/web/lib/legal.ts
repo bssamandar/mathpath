@@ -1,0 +1,6 @@
+/**
+ * Version of the terms and privacy policy shown at sign-up. The API stores it
+ * with the account (migration 2026111502), so a later change of terms can ask
+ * existing users to accept the new version.
+ */
+export const TERMS_VERSION = '2026-11';
