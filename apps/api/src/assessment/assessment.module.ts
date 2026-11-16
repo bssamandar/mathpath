@@ -11,23 +11,26 @@ import { BUSINESS_RULES } from '../config/tokens';
 import { CatalogueService, Entitlements } from '../content/catalogue.service';
 import { ContentModule } from '../content/content.module';
 import { DB } from '../database/database.module';
+import { LearningModule } from '../learning/learning.module';
+import { LearningService } from '../learning/learning.service';
 import { AttemptsController } from './attempts.controller';
 import { AttemptsService } from './attempts.service';
 
 @Module({
-  imports: [ContentModule],
+  imports: [ContentModule, LearningModule],
   controllers: [AttemptsController],
   providers: [
     {
       provide: AttemptsService,
-      inject: [DB, CatalogueService, Entitlements, Clock, BUSINESS_RULES],
+      inject: [DB, CatalogueService, Entitlements, Clock, BUSINESS_RULES, LearningService],
       useFactory: (
         db: Kysely<Database>,
         catalogue: CatalogueService,
         entitlements: Entitlements,
         clock: Clock,
         rules: AppConfig,
-      ) => new AttemptsService(db, catalogue, entitlements, clock, rules),
+        learning: LearningService,
+      ) => new AttemptsService(db, catalogue, entitlements, clock, rules, learning),
     },
   ],
 })

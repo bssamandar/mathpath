@@ -413,6 +413,18 @@ export async function seedDemoContent(db: Kysely<Database>, now = new Date()): P
         .where('id', '=', templateId)
         .execute();
     }
+
+    // Knowledge graph: comparing needs the meaning of a fraction; adding
+    // like fractions needs comparing (gap routing walks these edges).
+    const [meaning, comparing, adding] = DEMO_IDS.topics;
+    await trx
+      .insertInto('topic_prerequisites')
+      .values([
+        { topic_id: comparing, prerequisite_id: meaning },
+        { topic_id: adding, prerequisite_id: comparing },
+      ])
+      .onConflict((oc) => oc.columns(['topic_id', 'prerequisite_id']).doNothing())
+      .execute();
     return created;
   });
 }

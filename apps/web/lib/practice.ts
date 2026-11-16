@@ -47,7 +47,22 @@ export interface AttemptResult {
     correctAnswer: string;
     solution: string | null;
   }[];
-  recommendation?: { action: 'continue' | 'retry_practice'; topicId: string | null };
+  recommendation?: Recommendation | null;
+}
+
+/** The gap router's next step (docs/api/openapi.yaml, AttemptResult.recommendation). */
+export interface Recommendation {
+  action: 'continue' | 'retry_practice' | 'prerequisite_review' | 'take_break';
+  topicId: string | null;
+  topicTitle: string | null;
+  reason?: string;
+}
+
+/** A spaced review that is due (GET /me/reviews/due). */
+export interface DueReview {
+  topicId: string;
+  title: string;
+  dueAt: string;
 }
 
 export interface TopicStatus {

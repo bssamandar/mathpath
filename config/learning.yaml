@@ -21,6 +21,13 @@ practice:
 masteryTest:
   items: 8
 
+# Spaced review of a mastered topic: a short test, no hints (ADR-0006).
+# After the listed intervals run out, each new interval is the last one
+# times the topic's ease (SM-2); a failed review lowers the ease by 0.2.
+review:
+  items: 4
+  initialEase: 2.5
+
 # Gap routing limits (architecture §5.2). They stop a struggling student
 # from being sent down an endless chain of prerequisite detours.
 gapRouting:

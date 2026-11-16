@@ -396,6 +396,23 @@ latest path per (user, course) is current (`is_current boolean`, partial UQ).
 | payload | jsonb | For example `{fromTopic, toTopic, rule, mastery}` for `gap_routed` |
 | created_at | timestamptz | |
 
+> **Implementation note (step 6.4c, migration `2026111702_learning`):**
+> `topic_progress` is built as above except `topic_version_id` (topics are not
+> versioned per learner yet); `ease` is checked between 1.30 and 3.00 and the
+> review queue uses a partial index on `(user_id, next_review_at)`.
+> `learning_paths` is **not** stored: the path is computed on read from
+> `topic_progress` and the prerequisite graph (due reviews first, then a
+> topological order without mastered topics), because it changes after every
+> attempt and a stored copy would go stale. A new table, **learning_detours**
+> (`from_topic_id`, `to_topic_id`, `depth ≥ 1`, `status` open / refreshed /
+> added_to_path / closed, `resolved_at` set exactly when not open), records the
+> gap router's open detours so a review knows it is a gap check and the daily
+> and depth limits can be counted. `learning_events` starts as a plain table
+> with a type check; partitioning comes with the retention job. `attempts`
+> gains `recommendation jsonb`, the stored output of the gap router. A trigger
+> on `topic_prerequisites` refuses an edge that would create a cycle, so the
+> graph stays a DAG whichever tool writes it.
+
 ### 3.7 `assessment`
 
 **assessments**: a reusable definition of a test.

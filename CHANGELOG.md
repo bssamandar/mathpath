@@ -116,6 +116,19 @@ project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `config/learning.yaml`: `practice.itemsPerSet` and `masteryTest.items`.
 - Web practice and mastery test screens in the lesson player, with formulas
   rendered by KaTeX 0.18.11 and an on-screen number pad.
+- Adaptivity (`apps/api` learning module, ADR-0006): after a failed mastery
+  test the gap router picks the weakest prerequisite (not mastered, low
+  mastery, stale or needing review) and asks for a 3-question check, with at
+  most 2 levels and 1 detour a day; a passed check returns to the topic, a
+  failed one puts the prerequisite on the path. Mastered topics get SM-2 spaced
+  reviews (1, 3, 7, 16, 35 days, then by ease). New routes: learning path,
+  progress, due reviews and step completion. Migration `2026111702_learning`
+  with a cycle check on the prerequisite graph.
+- `config/learning.yaml`: `review.items` and `review.initialEase`.
+- Web: the next step after a test (refresh a prerequisite, back to the topic,
+  next topic, take a break), a review screen, due reviews on the student home,
+  progress badges on the course page, and video and activity steps recorded as
+  done.
 - Errors are returned as RFC 9457 problem details with a stable `code` and request ID.
 - CI (format, lint, typecheck, tests with an 80% coverage gate, build) and security
   scanning (gitleaks, pnpm audit, OSV-Scanner, Semgrep, CodeQL); Renovate.

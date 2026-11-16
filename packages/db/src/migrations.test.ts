@@ -46,6 +46,9 @@ const expectedTables: TableName[] = [
   'attempts',
   'attempt_items',
   'daily_usage',
+  'topic_progress',
+  'learning_detours',
+  'learning_events',
   'question_templates',
   'refresh_tokens',
   'risk_events',
@@ -411,6 +414,35 @@ describe('assessment constraints', () => {
         })
         .execute(),
     ).rejects.toThrow(/check/i);
+  });
+});
+
+describe('knowledge graph', () => {
+  it('refuses a prerequisite edge that closes a cycle', async () => {
+    const a = await insertTopic();
+    const { chapter_id } = await db
+      .selectFrom('topics')
+      .select('chapter_id')
+      .where('id', '=', a)
+      .executeTakeFirstOrThrow();
+    const [b, c] = [newId(), newId()];
+    await db
+      .insertInto('topics')
+      .values([
+        { id: b, chapter_id, slug: 'topic-b' },
+        { id: c, chapter_id, slug: 'topic-c' },
+      ])
+      .execute();
+    const edge = (topic: string, prerequisite: string) =>
+      db
+        .insertInto('topic_prerequisites')
+        .values({ topic_id: topic, prerequisite_id: prerequisite })
+        .execute();
+    await edge(b, a); // b needs a
+    await edge(c, b); // c needs b
+    await expect(edge(a, c)).rejects.toThrow(/cycle/);
+    await expect(edge(a, b)).rejects.toThrow(/cycle/);
+    await edge(c, a); // a shortcut is fine
   });
 });
 
