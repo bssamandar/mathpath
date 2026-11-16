@@ -33,6 +33,8 @@ const expectedTables: TableName[] = [
   'devices',
   'family_codes',
   'idempotency_keys',
+  'media_assets',
+  'media_keys',
   'mfa_factors',
   'mfa_recovery_codes',
   'otp_challenges',
@@ -272,6 +274,79 @@ describe('content constraints', () => {
     await expect(
       db.insertInto('tracks').values({ id: newId(), slug: 'school', title: '"plain"' }).execute(),
     ).rejects.toThrow(/check/i);
+  });
+});
+
+describe('media constraints', () => {
+  let uploader: string | undefined;
+  beforeEach(() => {
+    uploader = undefined;
+  });
+
+  async function insertMedia(values: Record<string, unknown>) {
+    const id = newId();
+    uploader ??= await insertUser();
+    await db
+      .insertInto('media_assets')
+      .values({
+        id,
+        kind: 'video',
+        content_type: 'video/mp4',
+        size_bytes: 1000,
+        source_key: `sources/${id}`,
+        uploaded_by: uploader,
+        ...values,
+      })
+      .execute();
+    return id;
+  }
+
+  it('stores sizes above 2 GiB - 1 (bigint)', async () => {
+    const id = await insertMedia({ size_bytes: 2 ** 31 });
+    const row = await db
+      .selectFrom('media_assets')
+      .select('size_bytes')
+      .where('id', '=', id)
+      .executeTakeFirstOrThrow();
+    expect(Number(row.size_bytes)).toBe(2 ** 31);
+  });
+
+  it('needs a parent video and a locale for subtitles, and only for subtitles', async () => {
+    const video = await insertMedia({});
+    await expect(insertMedia({ kind: 'subtitle', content_type: 'text/vtt' })).rejects.toThrow(
+      /check/i,
+    );
+    await insertMedia({
+      kind: 'subtitle',
+      content_type: 'text/vtt',
+      parent_id: video,
+      locale: 'ru',
+    });
+    await expect(insertMedia({ kind: 'image', parent_id: video })).rejects.toThrow(/check/i);
+  });
+
+  it('refuses a ready video without a manifest and a duration', async () => {
+    const video = await insertMedia({});
+    await expect(
+      db.updateTable('media_assets').set({ status: 'ready' }).where('id', '=', video).execute(),
+    ).rejects.toThrow(/check/i);
+    await db
+      .updateTable('media_assets')
+      .set({ status: 'ready', hls_manifest_key: `hls/${video}/master.m3u8`, duration_s: 300 })
+      .where('id', '=', video)
+      .execute();
+  });
+
+  it('keeps sealed keys and IVs at their exact sizes', async () => {
+    const video = await insertMedia({});
+    const insert = (sealed: number, iv: number) =>
+      db
+        .insertInto('media_keys')
+        .values({ media_id: video, sealed_key: Buffer.alloc(sealed), iv: Buffer.alloc(iv) })
+        .execute();
+    await expect(insert(16, 16)).rejects.toThrow(/check/i);
+    await expect(insert(44, 12)).rejects.toThrow(/check/i);
+    await insert(44, 16);
   });
 });
 

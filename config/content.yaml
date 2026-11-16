@@ -6,3 +6,22 @@ questionTypes: [single_choice, multiple_choice, numeric, formula, matching, orde
 video:
   minDurationSeconds: 120
   maxDurationSeconds: 600
+  maxUploadBytes: 2147483648 # 2 GiB source file
+  segmentSeconds: 6
+  # HLS ladder (architecture §7.1). A source is never upscaled.
+  ladder:
+    - { height: 240, videoKbps: 400 }
+    - { height: 360, videoKbps: 700 }
+    - { height: 480, videoKbps: 1200 }
+    - { height: 720, videoKbps: 2500 }
+  audioKbps: 96
+  audioOnlyKbps: 48
+media:
+  uploadUrlTtlSeconds: 900 # how long a presigned upload URL works
+  playbackTtlSeconds: 600 # playlist and key tokens (architecture §7.3)
+  # Segments are encrypted, so their URLs may live longer: a paused video
+  # must still resume. The key endpoint stays the gate.
+  segmentUrlTtlSeconds: 3600
+  keyRequestsPerMinute: 30 # per session, for GET /media/{id}/key
+  maxImageBytes: 5242880 # 5 MiB
+  maxSubtitleBytes: 1048576 # 1 MiB

@@ -9,7 +9,7 @@
     "dev": { "cache": false, "persistent": true },
     "lint": { "dependsOn": ["^build"] },
     "typecheck": { "dependsOn": ["^build"] },
-    "test": { "dependsOn": ["^build"] },
-    "test:coverage": { "dependsOn": ["^build"], "outputs": ["coverage/**"] }
+    "test": { "dependsOn": ["^build"], "env": ["TEST_*"] },
+    "test:coverage": { "dependsOn": ["^build"], "env": ["TEST_*"], "outputs": ["coverage/**"] }
   }
 }

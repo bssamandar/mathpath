@@ -367,7 +367,12 @@ admin UI later, with an audit trail, if they change often.
    encrypted with AES-128 using a per-video key.
 2. Keys are served only by `GET /media/{id}/key`, which checks the session and
    entitlement and is rate-limited.
-3. Playlist URLs are signed and expire after 10 minutes (config).
+3. Playlist URLs are signed and expire after 10 minutes (config). In the
+   implementation (step 6.3) the API serves the playlists itself at
+   `/media/{id}/hls/*.m3u8`: the token in the URL is bound to the video, the
+   viewer and the expiry, and the session must match. Segment lines become
+   presigned storage URLs (1 hour, `segmentUrlTtlSeconds`, so a paused video
+   can resume); segments are encrypted, so the key endpoint stays the gate.
 4. The player overlays a **dynamic watermark** (short user ID + time, position
    changes periodically). This deters screen recording and identifies leaks.
 5. Widevine/FairPlay DRM comes after the MVP, behind the same `media` module

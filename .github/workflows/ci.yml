@@ -29,6 +29,8 @@ jobs:
           --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 3s --health-retries 10
     env:
       TEST_REDIS_URL: redis://localhost:6379
+      # SeaweedFS for the S3 storage tests (packages/media), started below.
+      TEST_S3_ENDPOINT: http://localhost:8333
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
@@ -37,6 +39,24 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # The worker's transcoding tests run the real ffmpeg (apps/worker/src/transcode).
+      - name: Install ffmpeg
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends ffmpeg
+      # Started with docker run because service containers cannot take a command.
+      # Pinned by digest like the actions (C-44); same version as infra/docker-compose.yml.
+      - name: Start SeaweedFS
+        run: |
+          docker run -d --name seaweedfs -p 8333:8333 \
+            -v "$PWD/infra/seaweedfs/s3.json:/etc/seaweedfs/s3.json:ro" \
+            chrislusf/seaweedfs:3.97@sha256:5a93d0bb57a8bed169ce3b60219f5e9a8b94e57035e636dd768f8afdea6d9b19 \
+            server -dir=/data -ip.bind=0.0.0.0 -s3 -s3.port=8333 \
+            -s3.config=/etc/seaweedfs/s3.json -master.volumeSizeLimitMB=64 -volume.max=32
+          for i in $(seq 1 60); do
+            [ "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8333/)" = 403 ] && exit 0
+            sleep 2
+          done
+          docker logs seaweedfs
+          exit 1
       - name: Check formatting
         run: pnpm format:check
       - run: pnpm lint

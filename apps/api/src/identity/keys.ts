@@ -21,7 +21,7 @@ import { Logger } from '@nestjs/common';
 import type { Env } from '../config/env';
 
 /** Everything an HMAC is used for. Adding a purpose derives a new, independent key. */
-export type HmacPurpose = 'otp' | 'csrf' | 'recovery';
+export type HmacPurpose = 'otp' | 'csrf' | 'recovery' | 'media';
 
 /** Everything encrypted at rest with a derived key. */
 export type SealPurpose = 'mfa-secret';

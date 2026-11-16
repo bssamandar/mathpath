@@ -319,6 +319,44 @@ export interface ContentReviewsTable {
   created_at: CreatedAt;
 }
 
+export type MediaKind = 'video' | 'image' | 'subtitle';
+export type MediaStatus = 'awaiting_upload' | 'uploaded' | 'processing' | 'ready' | 'failed';
+
+/** One HLS rendition of a video; `height` is null for the audio-only fallback. */
+export interface Rendition {
+  name: string;
+  height: number | null;
+  bandwidth: number;
+}
+
+export interface MediaAssetsTable {
+  id: string;
+  kind: MediaKind;
+  locale: Locale | null;
+  parent_id: string | null;
+  content_type: string;
+  /** bigint: drivers return a string, number or BigInt, so read it with Number(). */
+  size_bytes: ColumnType<string | number | bigint, number, never>;
+  source_key: string;
+  status: ColumnType<MediaStatus, MediaStatus | undefined, MediaStatus>;
+  hls_manifest_key: string | null;
+  duration_s: number | null;
+  renditions: ColumnType<Rendition[] | null, string | null | undefined, string | null>;
+  error: string | null;
+  uploaded_by: string;
+  created_at: CreatedAt;
+  updated_at: ColumnType<Date, Date | undefined, Date>;
+}
+
+export interface MediaKeysTable {
+  media_id: string;
+  /** AES-128 key sealed by MediaKeyVault (IV + tag + ciphertext). */
+  sealed_key: Buffer;
+  iv: Buffer;
+  created_at: CreatedAt;
+  rotated_at: NullableTimestamp;
+}
+
 /** All tables, keyed by table name. */
 export interface Database {
   users: UsersTable;
@@ -348,6 +386,8 @@ export interface Database {
   topic_prerequisites: TopicPrerequisitesTable;
   topic_mappings: TopicMappingsTable;
   content_reviews: ContentReviewsTable;
+  media_assets: MediaAssetsTable;
+  media_keys: MediaKeysTable;
 }
 
 export type TableName = keyof Database;

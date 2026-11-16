@@ -1,0 +1,9 @@
+{
+  "identities": [
+    {
+      "name": "mathpath-local",
+      "credentials": [{ "accessKey": "mathpath", "secretKey": "mathpath_local_only" }],
+      "actions": ["Admin", "Read", "Write", "List", "Tagging"]
+    }
+  ]
+}

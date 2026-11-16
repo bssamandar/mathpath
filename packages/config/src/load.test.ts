@@ -85,6 +85,17 @@ describe('loadConfig', () => {
     expect(() => loadConfig(dir)).toThrow(/auth\.yaml[\s\S]*memoryKiB/);
   });
 
+  it('rejects a video ladder that is not ordered from lowest to highest', () => {
+    const dir = copyConfig();
+    replaceIn(
+      dir,
+      'content.yaml',
+      '{ height: 360, videoKbps: 700 }',
+      '{ height: 200, videoKbps: 700 }',
+    );
+    expect(() => loadConfig(dir)).toThrow(/ladder heights must be strictly ascending/);
+  });
+
   it('reports every broken file at once', () => {
     const dir = copyConfig();
     replaceIn(dir, 'learning.yaml', 'masteryThreshold: 0.8', 'masteryThreshold: -1');
