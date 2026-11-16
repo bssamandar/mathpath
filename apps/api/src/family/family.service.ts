@@ -568,6 +568,16 @@ export class FamilyService {
         'p.grade',
         'p.birth_year',
         'p.daily_time_limit_min',
+        // The child's current cover: a paid plan wins over a trial.
+        sql<string | null>`(
+          SELECT s.plan_code FROM subscription_members m
+          JOIN subscriptions s ON s.id = m.subscription_id
+          WHERE m.student_id = u.id
+            AND s.status IN ('trialing', 'active')
+            AND s.current_period_end > ${this.clock.now()}
+          ORDER BY (s.plan_code = 'trial')
+          LIMIT 1
+        )`.as('covered_by'),
       ])
       .where('u.deleted_at', 'is', null);
   }
@@ -588,6 +598,7 @@ function toChildView(row: {
   grade: number;
   birth_year: number | null;
   daily_time_limit_min: number | null;
+  covered_by: string | null;
 }): ChildView {
   return {
     id: row.id,
@@ -597,8 +608,7 @@ function toChildView(row: {
     grade: row.grade,
     birthYear: row.birth_year,
     dailyTimeLimitMin: row.daily_time_limit_min,
-    // Billing sets trial and paid; until then every child is on the free tier.
-    plan: 'free',
+    plan: row.covered_by === null ? 'free' : row.covered_by === 'trial' ? 'trial' : 'paid',
   };
 }
 

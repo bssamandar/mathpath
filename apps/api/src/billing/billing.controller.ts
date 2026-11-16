@@ -22,18 +22,43 @@ import { readerLocale } from '../content/content.controller';
 import type { AuthedRequest } from '../identity/auth.guard';
 import { Access } from '../identity/permissions';
 import { BillingService } from './billing.service';
+import { PromoService } from './promo.service';
 import { PAYMENT_PROVIDERS, type PaymentProvider } from './payment-provider';
 import type { ClickProvider } from './click/click';
 import type { PaymeProvider } from './payme/payme';
 
 const id = z.uuid();
+const planCode = z.string().min(1).max(64);
+const promoCode = z.string().trim().min(1).max(32);
+
+const promoCheckBody = z.object({ code: promoCode, planCode }).strict();
+
+const trialBody = z
+  .object({
+    studentIds: z.array(id).min(1).max(10),
+    deviceToken: z.string().min(1).max(512).optional(),
+  })
+  .strict();
+
+const promoBody = z
+  .object({
+    code: z.string().regex(/^[A-Za-z0-9_-]{4,32}$/),
+    discountType: z.enum(['percent', 'fixed']),
+    value: z.number().int().min(1).max(100_000_000_000),
+    planCodes: z.array(planCode).max(20).optional(),
+    maxRedemptions: z.number().int().min(1).max(1_000_000).optional(),
+    perUserLimit: z.number().int().min(1).max(100).optional(),
+    validFrom: z.iso.datetime({ offset: true }),
+    validTo: z.iso.datetime({ offset: true }),
+  })
+  .strict();
 
 const checkoutBody = z
   .object({
-    planCode: z.string().min(1).max(64),
+    planCode,
     provider: z.enum(['payme', 'click']),
     studentIds: z.array(id).min(1).max(10),
-    promoCode: z.string().trim().min(1).max(32).optional(),
+    promoCode: promoCode.optional(),
     saveCardForRenewal: z.boolean().optional(),
     returnUrl: z.url().max(500).optional(),
   })
@@ -43,14 +68,38 @@ const checkoutBody = z
 export class BillingController {
   constructor(
     private readonly billing: BillingService,
+    private readonly promo: PromoService,
     @Inject(BUSINESS_RULES) private readonly rules: AppConfig,
   ) {}
 
-  /** GET /plans: public, so the pricing page works before sign-up. */
+  /**
+   * GET /plans: public, so the pricing page works before sign-up. Also says
+   * which payment providers are on and how long the free trial is.
+   */
   @Get('plans')
   @Access('public')
   plans() {
-    return { items: this.billing.plans() };
+    return {
+      items: this.billing.plans(),
+      providers: this.billing.providerCodes(),
+      trialDays: this.rules.billing.trialDays,
+    };
+  }
+
+  /** POST /promo-codes/validate: the discounted price, or why the code does not apply. */
+  @Post('promo-codes/validate')
+  @HttpCode(200)
+  @Access('billing:purchase')
+  validatePromo(@Req() req: AuthedRequest, @Body() body: unknown) {
+    const input = parseInput(promoCheckBody, body);
+    return this.promo.check(req.auth!.userId, input.code, input.planCode);
+  }
+
+  /** POST /trials: the free trial for some of the parent's children. */
+  @Post('trials')
+  @Access('billing:purchase')
+  startTrial(@Req() req: AuthedRequest, @Body() body: unknown) {
+    return this.billing.startTrial(req.auth!.userId, parseInput(trialBody, body));
   }
 
   /**
@@ -90,7 +139,11 @@ export class BillingController {
   @Get('subscriptions')
   @Access('billing:read')
   async subscriptions(@Req() req: AuthedRequest) {
-    return { items: await this.billing.subscriptions(req.auth!.userId) };
+    const [items, trialAvailable] = await Promise.all([
+      this.billing.subscriptions(req.auth!.userId),
+      this.billing.trialAvailable(req.auth!.userId),
+    ]);
+    return { items, trialAvailable };
   }
 
   @Post('subscriptions/:subscriptionId/cancel')
@@ -98,6 +151,31 @@ export class BillingController {
   @Access('billing:manage')
   cancel(@Req() req: AuthedRequest, @Param('subscriptionId') subscriptionId: unknown) {
     return this.billing.cancel(req.auth!.userId, parseInput(id, subscriptionId));
+  }
+}
+
+/** Promo codes for admins (studio). */
+@Controller('admin/promo-codes')
+export class AdminPromoController {
+  constructor(private readonly promo: PromoService) {}
+
+  @Get()
+  @Access('admin:billing')
+  async list() {
+    return { items: await this.promo.list() };
+  }
+
+  @Post()
+  @Access('admin:billing')
+  create(@Req() req: AuthedRequest, @Body() body: unknown) {
+    return this.promo.create(req.auth!.userId, parseInput(promoBody, body));
+  }
+
+  @Post(':promoCodeId/deactivate')
+  @HttpCode(200)
+  @Access('admin:billing')
+  deactivate(@Req() req: AuthedRequest, @Param('promoCodeId') promoCodeId: unknown) {
+    return this.promo.deactivate(req.auth!.userId, parseInput(id, promoCodeId));
   }
 }
 

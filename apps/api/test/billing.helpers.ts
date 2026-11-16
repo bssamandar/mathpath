@@ -18,8 +18,13 @@ export async function user(t: TestApp, roles: Role[]) {
     .insertInto('user_roles')
     .values(roles.map((role) => ({ user_id: id, role })))
     .execute();
-  const auth = async () =>
-    `Bearer ${(await t.app.get(SessionService).start(id, client, 'password')).accessToken}`;
+  const staff = roles.some((r) => r !== 'student' && r !== 'parent');
+  const auth = async () => {
+    const sessions = t.app.get(SessionService);
+    const started = await sessions.start(id, client, 'password');
+    // Staff permissions count only after 2FA, so staff sessions are elevated.
+    return `Bearer ${(staff ? await sessions.elevate(started.sessionId) : started).accessToken}`;
+  };
   return { id, auth };
 }
 
@@ -29,6 +34,18 @@ export async function family(t: TestApp, n = 1) {
   const children = [];
   for (let i = 0; i < n; i++) {
     const child = await user(t, ['student']);
+    await t.db
+      .insertInto('student_profiles')
+      .values({
+        user_id: child.id,
+        nickname: `kid${i}`,
+        grade: 5,
+        birth_year: null,
+        avatar_code: null,
+        pin_hash: 'not-used',
+        daily_time_limit_min: null,
+      })
+      .execute();
     const consent = newId();
     await t.db
       .insertInto('consents')
@@ -78,4 +95,27 @@ export function withEnv(values: Record<string, string>) {
       }
     },
   };
+}
+
+/** Creates and performs a Payme transaction for an order, as Payme would. */
+export async function payWithPayme(t: TestApp, key: string, orderId: string, amount: number) {
+  const auth = `Basic ${Buffer.from(`Paycom:${key}`).toString('base64')}`;
+  const txn = randomUUID().replaceAll('-', '').slice(0, 24);
+  const call = async (method: string, params: unknown) =>
+    (
+      await browser(t.app.getHttpServer())
+        .post('/api/v1/payments/payme')
+        .set('Authorization', auth)
+        .send({ jsonrpc: '2.0', id: 1, method, params })
+    ).body as { result?: Record<string, unknown>; error?: { code: number } };
+  const created = await call('CreateTransaction', {
+    id: txn,
+    time: t.clock.now().getTime(),
+    amount,
+    account: { order_id: orderId },
+  });
+  if (!created.result) throw new Error(`CreateTransaction failed: ${JSON.stringify(created)}`);
+  const performed = await call('PerformTransaction', { id: txn });
+  if (!performed.result) throw new Error(`PerformTransaction failed: ${JSON.stringify(performed)}`);
+  return txn;
 }

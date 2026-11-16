@@ -475,8 +475,46 @@ export interface OrdersTable {
   return_url: string | null;
   expires_at: Timestamp;
   paid_at: NullableTimestamp;
+  promo_code_id: ColumnType<string | null, string | null | undefined, string | null>;
   created_at: ColumnType<Date, Date | undefined, never>;
   updated_at: ColumnType<Date, Date | undefined, Date>;
+}
+
+export type DiscountType = 'percent' | 'fixed';
+
+export interface PromoCodesTable {
+  id: string;
+  /** Upper-case, `[A-Z0-9_-]{4,32}`. */
+  code: string;
+  discount_type: DiscountType;
+  /** Percent (1–100) or tiyin, by `discount_type`. */
+  value: Tiyin;
+  /** Plans the code applies to; null means every plan. */
+  plan_codes: string[] | null;
+  max_redemptions: number | null;
+  per_user_limit: ColumnType<number, number | undefined, number>;
+  valid_from: Timestamp;
+  valid_to: Timestamp;
+  is_active: ColumnType<boolean, boolean | undefined, boolean>;
+  created_by: string;
+  created_at: ColumnType<Date, Date | undefined, never>;
+}
+
+export interface PromoRedemptionsTable {
+  promo_code_id: string;
+  order_id: string;
+  owner_id: string;
+  created_at: ColumnType<Date, Date | undefined, never>;
+}
+
+export interface TrialsTable {
+  id: string;
+  owner_id: string;
+  /** SHA-256 of the device token, when the app sent one. */
+  device_hash: string | null;
+  subscription_id: string;
+  started_at: Timestamp;
+  ends_at: Timestamp;
 }
 
 export interface SubscriptionsTable {
@@ -635,6 +673,9 @@ export interface Database {
   subscription_members: SubscriptionMembersTable;
   payments: PaymentsTable;
   payment_callbacks: PaymentCallbacksTable;
+  promo_codes: PromoCodesTable;
+  promo_redemptions: PromoRedemptionsTable;
+  trials: TrialsTable;
 }
 
 export type TableName = keyof Database;

@@ -569,3 +569,82 @@ section.done {
   color: var(--color-attention);
   font-weight: 700;
 }
+
+/* Plans, checkout and the plan page (UX F7, F8, S12). */
+.plans {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 calc(var(--space) * 4);
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--space) * 3);
+}
+.plan-card {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--space) * 2);
+  padding: calc(var(--space) * 4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+.plan-card.selected {
+  border: 2px solid var(--color-primary);
+}
+.plan-card h2,
+.plan-card p {
+  margin: 0;
+}
+.price {
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin: 0;
+}
+.features {
+  margin: 0;
+  padding-left: calc(var(--space) * 5);
+}
+.tag.saving {
+  color: var(--color-success);
+  font-weight: 700;
+}
+.tag.status-active,
+.tag.status-trialing {
+  color: var(--color-success);
+  font-weight: 700;
+}
+.choices-group {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--space) * 2);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.choices-group legend {
+  font-weight: 600;
+  margin-bottom: calc(var(--space) * 2);
+}
+.promo summary {
+  min-height: var(--target-min);
+  display: flex;
+  align-items: center;
+  color: var(--color-primary);
+  cursor: pointer;
+}
+.promo-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: calc(var(--space) * 2);
+}
+.promo-row .field {
+  flex: 1;
+  min-width: 12rem;
+}
+.payment-state {
+  font-size: 1.1rem;
+}
+.payment-state.paid {
+  color: var(--color-success);
+  font-weight: 700;
+}

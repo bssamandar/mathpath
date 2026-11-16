@@ -194,8 +194,10 @@ describe('generate', () => {
       answer: { kind: 'choice', expr: 'a', display: 'number' },
       distractors: ['a * a'],
     });
-    // a = 0 and a = 1 both make a*a = a, so no draw works.
-    expect(() => generate('single_choice', body, 'q')).toThrow('constraints');
+    // a = 0 and a = 1 both make a*a = a, so no draw works. A generous time
+    // budget makes this test the attempt limit, not the 50 ms clock, which a
+    // slow CI runner under coverage can hit first.
+    expect(() => generate('single_choice', body, 'q', 60_000)).toThrow('constraints');
   });
 });
 

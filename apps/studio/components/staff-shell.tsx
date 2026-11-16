@@ -43,6 +43,7 @@ export function StaffShell({ children }: { children: (me: Me) => ReactNode }) {
         </Link>
         <nav>
           <Link href="/">{t('nav.tree')}</Link>
+          {me.roles.includes('admin') && <Link href="/promo-codes">{t('nav.promo')}</Link>}
           <button type="button" className="link" onClick={() => void signOut()}>
             {t('nav.signOut')}
           </button>
