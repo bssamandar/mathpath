@@ -63,10 +63,26 @@ if (endpoint) {
   const s3 = new S3ObjectStore(settings);
   beforeAll(async () => {
     await s3.ensureBucket();
-    await s3.ensureBucket(); // a second call is harmless
+    await s3.ensureBucket(['http://localhost:3001']); // a second call is harmless
   });
   afterAll(() => s3.destroy());
   contract('S3ObjectStore', () => s3);
+
+  it('lets the configured browser origins upload, and no others', async () => {
+    const preflight = (origin: string) =>
+      fetch(`${endpoint}/mathpath-test/sources/x`, {
+        method: 'OPTIONS',
+        headers: {
+          Origin: origin,
+          'Access-Control-Request-Method': 'PUT',
+          'Access-Control-Request-Headers': 'content-type',
+        },
+      });
+    const allowed = await preflight('http://localhost:3001');
+    expect(allowed.headers.get('access-control-allow-origin')).toBe('http://localhost:3001');
+    const other = await preflight('https://evil.example');
+    expect(other.headers.get('access-control-allow-origin')).toBeNull();
+  });
 
   describe('S3ObjectStore presigning', () => {
     it('signs type and size into upload URLs, for the public host', async () => {

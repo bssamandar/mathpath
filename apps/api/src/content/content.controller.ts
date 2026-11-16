@@ -114,6 +114,13 @@ const reviewBody = z
 export class StudioController {
   constructor(private readonly studio: StudioService) {}
 
+  /** GET /studio/tree: tracks, courses, chapters and topics, drafts included. */
+  @Get('tree')
+  @Access('content:author')
+  async tree() {
+    return this.studio.tree();
+  }
+
   /** GET /studio/topics/{topicId}/versions */
   @Get('topics/:topicId/versions')
   @Access('content:author')

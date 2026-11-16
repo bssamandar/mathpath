@@ -64,6 +64,39 @@ export interface VersionView extends VersionSummary {
 
 type VersionRow = Selectable<TopicVersionsTable>;
 
+type PublishStatus = 'draft' | 'published' | 'archived';
+
+/** `StudioTree` in docs/api/openapi.yaml. */
+export interface StudioTree {
+  tracks: {
+    id: string;
+    slug: string;
+    title: LocalisedText;
+    courses: {
+      id: string;
+      slug: string;
+      title: LocalisedText;
+      grade: number | null;
+      status: PublishStatus;
+      chapters: {
+        id: string;
+        slug: string;
+        title: LocalisedText;
+        status: PublishStatus;
+        topics: {
+          id: string;
+          slug: string;
+          isFree: boolean;
+          publishedVersionId: string | null;
+          /** Title of the newest version; empty before the first draft. */
+          title: LocalisedText;
+          latest: { id: string; versionNo: number; status: VersionStatus } | null;
+        }[];
+      }[];
+    }[];
+  }[];
+}
+
 const EDITABLE: readonly VersionStatus[] = ['draft', 'changes_requested'];
 
 const notFound = () =>
@@ -78,6 +111,86 @@ export class StudioService {
     private readonly clock: Clock,
     private readonly rules: AppConfig['content'],
   ) {}
+
+  /**
+   * The whole content tree for the studio, drafts included, with each
+   * topic's newest version so the tree can show "draft", "in review" and so on.
+   */
+  async tree(): Promise<StudioTree> {
+    const [tracks, courses, chapters, topics, latest] = await Promise.all([
+      this.db
+        .selectFrom('tracks')
+        .select(['id', 'slug', 'title'])
+        .orderBy('sort')
+        .orderBy('slug')
+        .execute(),
+      this.db
+        .selectFrom('courses')
+        .select(['id', 'track_id', 'slug', 'title', 'grade', 'status'])
+        .orderBy('sort')
+        .orderBy('slug')
+        .execute(),
+      this.db
+        .selectFrom('chapters')
+        .select(['id', 'course_id', 'slug', 'title', 'status'])
+        .orderBy('sort')
+        .orderBy('slug')
+        .execute(),
+      this.db
+        .selectFrom('topics')
+        .select(['id', 'chapter_id', 'slug', 'is_free', 'published_version_id'])
+        .orderBy('sort')
+        .orderBy('slug')
+        .execute(),
+      this.db
+        .selectFrom('topic_versions')
+        .select(['topic_id', 'id', 'version_no', 'status', 'title'])
+        .distinctOn('topic_id')
+        .orderBy('topic_id')
+        .orderBy('version_no', 'desc')
+        .execute(),
+    ]);
+    const latestOf = new Map(latest.map((v) => [v.topic_id, v]));
+    return {
+      tracks: tracks.map((track) => ({
+        id: track.id,
+        slug: track.slug,
+        title: track.title,
+        courses: courses
+          .filter((c) => c.track_id === track.id)
+          .map((course) => ({
+            id: course.id,
+            slug: course.slug,
+            title: course.title,
+            grade: course.grade,
+            status: course.status,
+            chapters: chapters
+              .filter((ch) => ch.course_id === course.id)
+              .map((chapter) => ({
+                id: chapter.id,
+                slug: chapter.slug,
+                title: chapter.title,
+                status: chapter.status,
+                topics: topics
+                  .filter((t) => t.chapter_id === chapter.id)
+                  .map((topic) => {
+                    const version = latestOf.get(topic.id);
+                    return {
+                      id: topic.id,
+                      slug: topic.slug,
+                      isFree: topic.is_free,
+                      publishedVersionId: topic.published_version_id,
+                      title: version?.title ?? {},
+                      latest: version
+                        ? { id: version.id, versionNo: version.version_no, status: version.status }
+                        : null,
+                    };
+                  }),
+              })),
+          })),
+      })),
+    };
+  }
 
   /** Version history of a topic, newest first. */
   async listVersions(topicId: string): Promise<VersionSummary[]> {
@@ -242,10 +355,13 @@ export class StudioService {
     if (!EDITABLE.includes(row.status)) throw wrongState(row.status, 'submitted');
     // Steps were validated when saved; parsing again guards rows written by seeds.
     const steps = lessonStep.array().parse(row.steps);
-    const errors = incompleteFields(
-      { title: row.title, summary: row.summary, steps },
-      this.rules.requiredContentLocales,
-    );
+    const errors = [
+      ...incompleteFields(
+        { title: row.title, summary: row.summary, steps },
+        this.rules.requiredContentLocales,
+      ),
+      ...(await this.unreadyVideos(steps)),
+    ];
     if (errors.length > 0) {
       throw new ProblemException(422, 'CONTENT_INCOMPLETE', 'Some required texts are missing.', {
         errors,
@@ -362,6 +478,32 @@ export class StudioService {
       );
     });
     return summary(await this.find(row.id));
+  }
+
+  /** A lesson can only go to review once every video in it has finished transcoding. */
+  private async unreadyVideos(steps: LessonStep[]): Promise<{ field: string; message: string }[]> {
+    const videos = steps.flatMap((step, i) =>
+      step.type === 'video' ? [{ i, id: step.mediaId }] : [],
+    );
+    if (videos.length === 0) return [];
+    const ready = await this.db
+      .selectFrom('media_assets')
+      .select('id')
+      .where(
+        'id',
+        'in',
+        videos.map((v) => v.id),
+      )
+      .where('kind', '=', 'video')
+      .where('status', '=', 'ready')
+      .execute();
+    const readyIds = new Set(ready.map((r) => r.id));
+    return videos
+      .filter((v) => !readyIds.has(v.id))
+      .map((v) => ({
+        field: `steps/${v.i}/mediaId`,
+        message: 'video is missing or not ready yet',
+      }));
   }
 
   private async find(versionId: string): Promise<VersionRow> {

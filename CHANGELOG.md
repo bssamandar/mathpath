@@ -73,6 +73,20 @@ project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   playlists and key endpoint (re-checks access, rate-limited per session),
   watermark code, subtitles per locale. Worker image with ffmpeg
   (`infra/docker/worker.Dockerfile`).
+- Studio (`apps/studio`): staff sign-in with authenticator enrolment and
+  recovery codes; the content tree; the topic editor (versions, Uzbek and
+  Russian fields side by side, step cards with reorder, video upload with
+  progress and transcoding status, subtitles, activity settings), save with
+  `If-Match`, submit, review with comments, publish, review history, and a
+  phone-sized preview per language. Per-request CSP nonce with the storage
+  origin in `connect-src` (`MEDIA_ORIGIN`).
+- `GET /studio/tree`: the whole catalogue with each topic's newest version.
+  Submitting a lesson now needs every video step's media to be ready (422
+  with the step's field).
+- `@mathpath/client`: the browser API client shared by web and studio
+  (`PUT` and extra headers added).
+- `MEDIA_BROWSER_ORIGINS`: outside production the API sets bucket CORS so
+  these origins can upload to and play from storage directly.
 - `config/auth.yaml` for token lifetimes, OTP resend delay and password rules.
 - Migration `2026111502_terms_acceptance`: the terms version each user accepted.
 - Errors are returned as RFC 9457 problem details with a stable `code` and request ID.

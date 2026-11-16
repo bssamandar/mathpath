@@ -26,6 +26,17 @@ export const mediaEnvSchema = z.object({
     .transform((value) => value === 'true'),
   // Seals the per-video HLS keys at rest. At least 32 bytes.
   MEDIA_KEY_SECRET: z.preprocess(blankToUndefined, z.string().min(32).optional()),
+  // Web and studio origins that upload to and play from storage directly (bucket CORS).
+  MEDIA_BROWSER_ORIGINS: z
+    .string()
+    .default('http://localhost:3000,http://localhost:3001')
+    .transform((value) =>
+      value
+        .split(',')
+        .map((origin) => origin.trim())
+        .filter(Boolean),
+    )
+    .pipe(z.array(z.url())),
 });
 
 export type MediaEnv = z.infer<typeof mediaEnvSchema>;
