@@ -9,3 +9,4 @@ export {
   type RequestOptions,
   type SessionInfo,
 } from './api';
+export { splitMath } from './math';

@@ -1,8 +1,8 @@
 'use client';
 
+import { splitMath } from '@mathpath/client';
 import katex from 'katex';
 import { useMemo } from 'react';
-import { splitMath } from '../lib/practice';
 
 /**
  * Text with inline formulas (`$...$`), as question stems and solutions are

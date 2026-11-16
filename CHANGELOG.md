@@ -129,6 +129,11 @@ project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   next topic, take a break), a review screen, due reviews on the student home,
   progress badges on the course page, and video and activity steps recorded as
   done.
+- Studio question editor: a topic's question bank, and a form for question
+  templates (type, difficulty, variables, constraints, stem, answer, wrong
+  options, hints, solution) with live samples from the engine rendered by
+  KaTeX like the learner app, problems shown next to the part they are about,
+  and the same review and publish workflow as lessons.
 - Errors are returned as RFC 9457 problem details with a stable `code` and request ID.
 - CI (format, lint, typecheck, tests with an 80% coverage gate, build) and security
   scanning (gitleaks, pnpm audit, OSV-Scanner, Semgrep, CodeQL); Renovate.
