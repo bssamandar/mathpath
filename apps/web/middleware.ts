@@ -11,6 +11,8 @@ import { type NextRequest, NextResponse } from 'next/server';
 export function middleware(request: NextRequest) {
   const nonce = Buffer.from(crypto.randomUUID()).toString('base64');
   const dev = process.env.NODE_ENV !== 'production';
+  // Video segments and subtitles come straight from storage (presigned URLs).
+  const media = mediaOrigin(process.env.MEDIA_ORIGIN);
   const csp = [
     "default-src 'self'",
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${dev ? " 'unsafe-eval'" : ''}`,
@@ -18,7 +20,10 @@ export function middleware(request: NextRequest) {
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob:",
     "font-src 'self'",
-    "connect-src 'self'",
+    `connect-src 'self'${media}`,
+    // hls.js feeds the <video> through MediaSource (blob:) and may use a worker.
+    `media-src 'self' blob:${media}`,
+    "worker-src 'self' blob:",
     'frame-src https://challenges.cloudflare.com',
     "object-src 'none'",
     "base-uri 'self'",
@@ -33,6 +38,17 @@ export function middleware(request: NextRequest) {
   const response = NextResponse.next({ request: { headers } });
   response.headers.set('Content-Security-Policy', csp);
   return response;
+}
+
+/** ` scheme://host[:port]` of an http(s) URL, or '' when unset or invalid. */
+function mediaOrigin(url: string | undefined): string {
+  if (!url) return '';
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? ` ${parsed.origin}` : '';
+  } catch {
+    return '';
+  }
 }
 
 export const config = {
