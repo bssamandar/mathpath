@@ -229,6 +229,96 @@ export interface IdempotencyKeysTable {
   created_at: CreatedAt;
 }
 
+/** Localised text: `{"uz-Latn": "...", "ru": "...", "en": "..."}` (schema doc §1). */
+export type LocalisedText = Partial<Record<Locale, string>>;
+type Json<T> = ColumnType<T, T | string | undefined, T | string>;
+export type CatalogueStatus = 'draft' | 'published' | 'archived';
+export type VersionStatus =
+  | 'draft'
+  | 'in_review'
+  | 'changes_requested'
+  | 'approved'
+  | 'published'
+  | 'archived';
+
+export interface TracksTable {
+  id: string;
+  slug: string;
+  title: Json<LocalisedText>;
+  sort: ColumnType<number, number | undefined, number>;
+  is_active: ColumnType<boolean, boolean | undefined, boolean>;
+}
+
+export interface CoursesTable {
+  id: string;
+  track_id: string;
+  slug: string;
+  grade: number | null;
+  title: Json<LocalisedText>;
+  description: Json<LocalisedText>;
+  status: ColumnType<CatalogueStatus, CatalogueStatus | undefined, CatalogueStatus>;
+  sort: ColumnType<number, number | undefined, number>;
+}
+
+export interface ChaptersTable {
+  id: string;
+  course_id: string;
+  slug: string;
+  title: Json<LocalisedText>;
+  sort: ColumnType<number, number | undefined, number>;
+  status: ColumnType<CatalogueStatus, CatalogueStatus | undefined, CatalogueStatus>;
+}
+
+export interface TopicsTable {
+  id: string;
+  chapter_id: string;
+  slug: string;
+  sort: ColumnType<number, number | undefined, number>;
+  is_free: ColumnType<boolean, boolean | undefined, boolean>;
+  published_version_id: string | null;
+  created_at: CreatedAt;
+  updated_at: ColumnType<Date, Date | undefined, Date>;
+}
+
+export interface TopicVersionsTable {
+  id: string;
+  topic_id: string;
+  version_no: number;
+  status: ColumnType<VersionStatus, VersionStatus | undefined, VersionStatus>;
+  title: Json<LocalisedText>;
+  summary: Json<LocalisedText>;
+  /** Lesson steps; shape validated by the content module (schema doc §4.1). */
+  steps: Json<unknown[]>;
+  question_pool: Json<Record<string, unknown>>;
+  author_id: string;
+  content_hash: string;
+  published_at: NullableTimestamp;
+  created_at: CreatedAt;
+  updated_at: ColumnType<Date, Date | undefined, Date>;
+}
+
+export interface TopicPrerequisitesTable {
+  topic_id: string;
+  prerequisite_id: string;
+  strength: ColumnType<'required' | 'helpful', 'required' | 'helpful' | undefined, never>;
+}
+
+export interface TopicMappingsTable {
+  topic_id: string;
+  mapped_topic_id: string;
+  relation: 'equivalent' | 'partial' | 'extends';
+}
+
+export interface ContentReviewsTable {
+  id: string;
+  entity_type: 'topic_version' | 'question_template_version';
+  entity_id: string;
+  reviewer_id: string;
+  decision: 'approved' | 'changes_requested';
+  comments: Json<{ anchor?: string; text: string }[]>;
+  created_at: CreatedAt;
+}
+
 /** All tables, keyed by table name. */
 export interface Database {
   users: UsersTable;
@@ -250,6 +340,14 @@ export interface Database {
   outbox_events: OutboxEventsTable;
   processed_events: ProcessedEventsTable;
   idempotency_keys: IdempotencyKeysTable;
+  tracks: TracksTable;
+  courses: CoursesTable;
+  chapters: ChaptersTable;
+  topics: TopicsTable;
+  topic_versions: TopicVersionsTable;
+  topic_prerequisites: TopicPrerequisitesTable;
+  topic_mappings: TopicMappingsTable;
+  content_reviews: ContentReviewsTable;
 }
 
 export type TableName = keyof Database;

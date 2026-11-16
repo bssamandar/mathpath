@@ -56,6 +56,12 @@ project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   and English. Turnstile appears when the API asks for a CAPTCHA. Tokens stay
   in HttpOnly cookies; refreshes are serialised across tabs (Web Locks). A
   per-request CSP nonce is set in middleware.
+- Content (`apps/api` content module, migration `2026111601_content`): tracks,
+  courses, chapters, topics and versioned lessons with a draft → review →
+  publish workflow (four-eyes review, ETag-protected saves, one open draft per
+  topic, published versions frozen by a database trigger). Catalogue API in the
+  reader's language; free topics open, paid topics answer 402 until billing.
+  `pnpm db:seed` loads three demo grade 5 fraction topics in Uzbek and Russian.
 - `config/auth.yaml` for token lifetimes, OTP resend delay and password rules.
 - Migration `2026111502_terms_acceptance`: the terms version each user accepted.
 - Errors are returned as RFC 9457 problem details with a stable `code` and request ID.

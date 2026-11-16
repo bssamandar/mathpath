@@ -9,3 +9,4 @@ export {
 } from './migrator';
 export * from './schema';
 export { createTestDb } from './testing';
+export { DEMO_IDS, seedDemoContent } from './seeds/demo-content';
