@@ -75,6 +75,13 @@ project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   (`infra/docker/worker.Dockerfile`).
 - `config/auth.yaml` for token lifetimes, OTP resend delay and password rules.
 - Migration `2026111502_terms_acceptance`: the terms version each user accepted.
+- Web lesson player (`apps/web`): course list, course page with locked paid
+  topics, and `/learn/{topicId}` with a stepper. Videos play the encrypted HLS
+  stream with hls.js 1.7.4 (native HLS on iOS), with a moving watermark, speed
+  and quality choice, subtitles in the reader's language first, and a fresh
+  token after a long pause. Activities, practice and tests show a placeholder
+  until the question engine (6.4). The CSP allows the storage origin
+  (`MEDIA_ORIGIN`) for segments and subtitles.
 - Errors are returned as RFC 9457 problem details with a stable `code` and request ID.
 - CI (format, lint, typecheck, tests with an 80% coverage gate, build) and security
   scanning (gitleaks, pnpm audit, OSV-Scanner, Semgrep, CodeQL); Renovate.

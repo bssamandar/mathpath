@@ -166,6 +166,9 @@ importers:
 
   apps/web:
     dependencies:
+      hls.js:
+        specifier: 1.7.4
+        version: 1.7.4
       next:
         specifier: 15.5.28
         version: 15.5.28(@types/node@22.19.1)(react-dom@19.1.10(react@19.1.10))(react@19.1.10)
@@ -2241,6 +2244,9 @@ packages:
   helmet@8.1.0:
     resolution: {integrity: sha512-jOiHyAZsmnr8LqoPGmCjYAaiuWwjAPLgY8ZX2XrmHawt99/u1y6RgrZMTeoPfpUbV96HOalYgz1qzkRbw54Pmg==}
     engines: {node: '>=18.0.0'}
+
+  hls.js@1.7.4:
+    resolution: {integrity: sha512-3GlxGdPvT2YHvQYOt+yOzT/DEior/qJVNIylHA77kgeoBTdQQqi70GwefNEUmHQeNGyjC8U62+bruqW/Tpm+tg==}
 
   html-escaper@2.0.2:
     resolution: {integrity: sha512-H2iMtd0I4Mt5eYiapRdIDjp+XzelXQ0tFE4JS7YFwFevXXMmOp9myNrUvCg0D6ws8iqkRPBfKHgbwig1SmlLfg==}
@@ -5181,6 +5187,8 @@ snapshots:
       function-bind: 1.1.2
 
   helmet@8.1.0: {}
+
+  hls.js@1.7.4: {}
 
   html-escaper@2.0.2: {}
 
