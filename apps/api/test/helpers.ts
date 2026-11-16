@@ -80,5 +80,6 @@ export function browser(server: Parameters<typeof request>[0]) {
     get: (url: string) => request(server).get(url).set('User-Agent', BROWSER_UA),
     post: (url: string) => request(server).post(url).set('User-Agent', BROWSER_UA),
     patch: (url: string) => request(server).patch(url).set('User-Agent', BROWSER_UA),
+    put: (url: string) => request(server).put(url).set('User-Agent', BROWSER_UA),
   };
 }

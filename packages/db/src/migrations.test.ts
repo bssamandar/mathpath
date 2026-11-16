@@ -26,7 +26,10 @@ async function tableNames(): Promise<string[]> {
 const expectedTables: TableName[] = [
   'audit_log',
   'blocked_prefixes',
+  'chapters',
   'consents',
+  'content_reviews',
+  'courses',
   'devices',
   'family_codes',
   'idempotency_keys',
@@ -41,6 +44,11 @@ const expectedTables: TableName[] = [
   'risk_reviews',
   'sessions',
   'student_profiles',
+  'topic_mappings',
+  'topic_prerequisites',
+  'topic_versions',
+  'topics',
+  'tracks',
   'user_roles',
   'users',
 ];
@@ -172,6 +180,98 @@ describe('audit_log', () => {
     await expect(db.deleteFrom('audit_log').where('id', '=', id).execute()).rejects.toThrow(
       /append-only/,
     );
+  });
+});
+
+/** A track, course, chapter and topic, returning the topic ID. */
+async function insertTopic(): Promise<string> {
+  const [track, course, chapter, topic] = [newId(), newId(), newId(), newId()];
+  await db
+    .insertInto('tracks')
+    .values({ id: track, slug: 'school', title: { en: 'School' } })
+    .execute();
+  await db
+    .insertInto('courses')
+    .values({ id: course, track_id: track, slug: 'grade-5', grade: 5, title: { en: 'Grade 5' } })
+    .execute();
+  await db
+    .insertInto('chapters')
+    .values({ id: chapter, course_id: course, slug: 'fractions', title: { en: 'Fractions' } })
+    .execute();
+  await db
+    .insertInto('topics')
+    .values({ id: topic, chapter_id: chapter, slug: 'adding-fractions' })
+    .execute();
+  return topic;
+}
+
+async function insertVersion(topicId: string, versionNo: number, authorId: string) {
+  const id = newId();
+  await db
+    .insertInto('topic_versions')
+    .values({
+      id,
+      topic_id: topicId,
+      version_no: versionNo,
+      title: { en: 'Adding fractions' },
+      author_id: authorId,
+      content_hash: 'h',
+    })
+    .execute();
+  return id;
+}
+
+describe('content constraints', () => {
+  it('freezes a published topic version except for archiving it', async () => {
+    const topic = await insertTopic();
+    const author = await insertUser();
+    const id = await insertVersion(topic, 1, author);
+    await db
+      .updateTable('topic_versions')
+      .set({ status: 'published', published_at: new Date() })
+      .where('id', '=', id)
+      .execute();
+    await expect(
+      db
+        .updateTable('topic_versions')
+        .set({ steps: '[]', title: { en: 'Changed' } })
+        .where('id', '=', id)
+        .execute(),
+    ).rejects.toThrow(/immutable/);
+    await expect(db.deleteFrom('topic_versions').where('id', '=', id).execute()).rejects.toThrow(
+      /cannot be deleted/,
+    );
+    await db
+      .updateTable('topic_versions')
+      .set({ status: 'archived' })
+      .where('id', '=', id)
+      .execute();
+    await expect(
+      db.updateTable('topic_versions').set({ status: 'published' }).where('id', '=', id).execute(),
+    ).rejects.toThrow(/immutable/);
+  });
+
+  it('allows only one open draft per topic', async () => {
+    const topic = await insertTopic();
+    const author = await insertUser();
+    await insertVersion(topic, 1, author);
+    await expect(insertVersion(topic, 2, author)).rejects.toThrow(/one_open_draft/);
+  });
+
+  it('refuses a topic as its own prerequisite', async () => {
+    const topic = await insertTopic();
+    await expect(
+      db
+        .insertInto('topic_prerequisites')
+        .values({ topic_id: topic, prerequisite_id: topic })
+        .execute(),
+    ).rejects.toThrow(/check/i);
+  });
+
+  it('accepts only localised objects for titles', async () => {
+    await expect(
+      db.insertInto('tracks').values({ id: newId(), slug: 'school', title: '"plain"' }).execute(),
+    ).rejects.toThrow(/check/i);
   });
 });
 

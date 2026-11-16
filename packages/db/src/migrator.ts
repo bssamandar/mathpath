@@ -1,6 +1,7 @@
 import { type Kysely, type Migration, type MigrationResultSet, Migrator } from 'kysely';
 import * as m2026111501 from './migrations/2026111501_identity';
 import * as m2026111502 from './migrations/2026111502_terms_acceptance';
+import * as m2026111601 from './migrations/2026111601_content';
 
 /**
  * The ordered list of migrations. Names sort chronologically; each module
@@ -12,6 +13,7 @@ import * as m2026111502 from './migrations/2026111502_terms_acceptance';
 export const migrations: Record<string, Migration> = {
   '2026111501_identity': m2026111501,
   '2026111502_terms_acceptance': m2026111502,
+  '2026111601_content': m2026111601,
 };
 
 function migratorFor(db: Kysely<unknown>, list: Record<string, Migration>): Migrator {

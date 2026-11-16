@@ -680,6 +680,8 @@ paths:
       summary: Tracks with their courses.
       security: []
       x-permission: public
+      parameters:
+        - { name: locale, in: query, required: false, schema: { $ref: '#/components/schemas/Locale' }, description: 'Language of the returned texts. Without it, Accept-Language decides, then the default locale; a missing translation falls back to the default.' }
       responses:
         '200':
           description: OK (cacheable, ETag)
@@ -702,6 +704,7 @@ paths:
       x-permission: public
       parameters:
         - { name: courseId, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } }
+        - { name: locale, in: query, required: false, schema: { $ref: '#/components/schemas/Locale' }, description: 'Language of the returned texts. Without it, Accept-Language decides, then the default locale; a missing translation falls back to the default.' }
       responses:
         '200':
           description: OK
@@ -715,10 +718,14 @@ paths:
       tags: [Catalogue]
       operationId: getLesson
       summary: Lesson steps of a topic (the version pinned for this student).
-      description: Returns 402 with an upgrade hint if the topic is not free and the user has no entitlement.
+      description: |
+        Returns 402 `PAYMENT_REQUIRED` if the topic is not free and the user has
+        no entitlement, and 404 `TOPIC_NOT_FOUND` if the topic has no published
+        version. `completed` is always false until progress tracking lands (step 6.4).
       x-permission: content:read
       parameters:
         - $ref: '#/components/parameters/TopicId'
+        - { name: locale, in: query, required: false, schema: { $ref: '#/components/schemas/Locale' }, description: 'Language of the returned texts. Without it, Accept-Language decides, then the default locale; a missing translation falls back to the default.' }
       responses:
         '200':
           description: OK
@@ -1457,10 +1464,13 @@ paths:
       tags: [Studio]
       operationId: createTopicDraft
       summary: Create a new draft (copied from the latest version).
+      description: A topic has at most one open version; another one returns 409 `DRAFT_EXISTS`.
       x-permission: content:author
       responses:
         '201':
           description: Draft created.
+          headers:
+            ETag: { schema: { type: string }, description: Send as If-Match when saving. }
           content:
             application/json:
               schema: { $ref: '#/components/schemas/TopicVersion' }
@@ -1476,6 +1486,8 @@ paths:
       responses:
         '200':
           description: OK
+          headers:
+            ETag: { schema: { type: string }, description: Send as If-Match when saving. }
           content:
             application/json:
               schema: { $ref: '#/components/schemas/TopicVersion' }
@@ -1566,6 +1578,10 @@ paths:
       tags: [Studio]
       operationId: submitForReview
       summary: Move a draft (topic or question) to review.
+      description: |
+        Refused with 422 `CONTENT_INCOMPLETE` (listing the fields) when a title,
+        summary or step prompt lacks a required content locale
+        (`config/content.yaml`), or when the lesson has no steps.
       x-permission: content:author
       responses:
         '200':
@@ -1582,6 +1598,7 @@ paths:
       tags: [Studio]
       operationId: reviewVersion
       summary: Approve or request changes. The reviewer must not be the author.
+      description: The author reviewing their own version gets 403 `FOUR_EYES` (C-18).
       x-permission: content:review
       requestBody:
         required: true
@@ -1616,6 +1633,10 @@ paths:
       tags: [Studio]
       operationId: publishVersion
       summary: Publish an approved version (it becomes immutable).
+      description: |
+        The previously published version is archived. Published and archived
+        versions cannot be changed or deleted (a database trigger enforces it).
+        A version in any other state than `approved` returns 409 `VERSION_STATE_CONFLICT`.
       x-permission: content:publish
       responses:
         '200':

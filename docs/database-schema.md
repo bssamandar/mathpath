@@ -286,6 +286,9 @@ UQ (course_id, slug).
 | published_at | timestamptz NULL | |
 | content_hash | text | SHA-256 of the canonical JSON. Published versions are **immutable**, enforced by a trigger |
 
+A partial unique index allows **one open version per topic** (`draft`, `in_review`,
+`changes_requested` or `approved`), so two authors cannot publish over each other.
+
 **topic_prerequisites** (knowledge graph)
 | Column | Type | Notes |
 |---|---|---|
