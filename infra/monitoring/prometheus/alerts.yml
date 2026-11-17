@@ -124,6 +124,19 @@ groups:
         labels: { severity: warn }
         annotations:
           summary: 'SMS spend passed 70% of the daily cap.'
+      - alert: BillingReconciliationMismatch
+        expr: max by (check) (mathpath_billing_reconciliation_mismatches) > 0
+        labels: { severity: page }
+        annotations:
+          summary: 'Billing reconciliation check {{ $labels.check }} found {{ $value }} rows wrong. The worker log (billing-reconciliation) lists the first IDs; see docs/guides/payments.md.'
+      - alert: BillingReconciliationNotRunning
+        expr: |
+          time() - max(mathpath_job_last_success_timestamp_seconds{task="billing_reconciliation"}) > 26 * 3600
+            or absent(mathpath_job_last_success_timestamp_seconds{task="billing_reconciliation"})
+        for: 1h
+        labels: { severity: warn }
+        annotations:
+          summary: 'The daily billing reconciliation has not finished for over 26 hours.'
 
   - name: jobs
     rules:

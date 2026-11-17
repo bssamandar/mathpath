@@ -1,11 +1,13 @@
 /**
  * Staff side: an admin must enrol 2FA on first sign-in, then locks a parent's
- * account with a reason, and the change appears in the audit log.
+ * account with a reason, and the change appears in the audit log; then asks
+ * for a refund of the parent's Payme payment.
  */
 import { expect, test } from '@playwright/test';
 import {
   expectAccessible,
   grantRole,
+  paidPaymeOrder,
   newPhone,
   passDevCaptcha,
   signUpParent,
@@ -13,7 +15,7 @@ import {
   totp,
 } from '../helpers';
 
-test('an admin enrols 2FA, locks an account and finds it in the audit log', async ({
+test('an admin enrols 2FA, locks an account, reads the audit log and asks for a refund', async ({
   page,
   browser,
 }) => {
@@ -31,6 +33,7 @@ test('an admin enrols 2FA, locks an account and finds it in the audit log', asyn
     await context.close();
   }
   await grantRole(adminPhone, 'admin');
+  await paidPaymeOrder(parentPhone);
 
   await page.goto(`${STUDIO_URL}/`);
   await page.waitForURL('**/login');
@@ -62,5 +65,18 @@ test('an admin enrols 2FA, locks an account and finds it in the audit log', asyn
 
   await page.getByRole('link', { name: 'Audit jurnali', exact: true }).click();
   await expect(page.getByRole('button', { name: 'user.status_change' }).first()).toBeVisible();
+  await expectAccessible(page);
+
+  // Refund the parent's Payme payment: recorded, then finished in the Payme cabinet.
+  await page.getByRole('link', { name: 'To‘lovlar' }).click();
+  await page.getByLabel('Telefon yoki ID').fill(parentPhone);
+  await page.getByRole('button', { name: 'Qidirish' }).click();
+  await expect(page.getByText('99 000 so‘m')).toBeVisible();
+  await expectAccessible(page);
+  await page.getByRole('button', { name: 'Pulni qaytarish' }).click();
+  await page.getByLabel('Sabab').fill('E2E: the parent asked within 14 days');
+  await page.getByRole('button', { name: 'Qaytarishni tasdiqlash' }).click();
+  await expect(page.getByRole('status').getByText('So‘rov yozildi.')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Pulni qaytarish' })).toHaveCount(0);
   await expectAccessible(page);
 });

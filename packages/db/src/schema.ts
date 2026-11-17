@@ -630,6 +630,25 @@ export interface PaymentsTable {
   merchant_ref: ColumnType<string, never, never>;
 }
 
+export type RefundStatus = 'requested' | 'succeeded' | 'failed';
+
+export interface RefundsTable {
+  id: string;
+  payment_id: string;
+  amount_tiyin: Tiyin;
+  status: ColumnType<RefundStatus, RefundStatus | undefined, RefundStatus>;
+  reason: string;
+  /** The admin who asked; null for a refund the provider started on its side. */
+  requested_by: string | null;
+  idempotency_key: string | null;
+  /** The provider's reference for the refund, when it gives one. */
+  provider_ref: string | null;
+  /** Why the provider refused; set exactly when the status is `failed`. */
+  failure: string | null;
+  created_at: ColumnType<Date, Date | undefined, never>;
+  completed_at: NullableTimestamp;
+}
+
 export interface PaymentCallbacksTable {
   id: string;
   provider: string;
@@ -747,6 +766,7 @@ export interface Database {
   subscription_members: SubscriptionMembersTable;
   payments: PaymentsTable;
   payment_callbacks: PaymentCallbacksTable;
+  refunds: RefundsTable;
   promo_codes: PromoCodesTable;
   promo_redemptions: PromoRedemptionsTable;
   trials: TrialsTable;

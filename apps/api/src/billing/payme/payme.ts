@@ -336,8 +336,19 @@ export class PaymeProvider extends PaymentProvider {
           })
           .where('id', '=', payment.id)
           .execute();
-        if (refund) await this.billing.revoke(trx, payment.order_id, now);
-        else {
+        if (refund) {
+          await this.billing.revoke(trx, payment.order_id, now);
+          await this.billing.settleProviderRefund(
+            trx,
+            {
+              paymentId: payment.id,
+              amountTiyin: Number(payment.amount_tiyin),
+              providerRef: id,
+              note: `Cancelled in Payme (reason ${reason})`,
+            },
+            now,
+          );
+        } else {
           await trx
             .updateTable('orders')
             .set({ status: 'cancelled', updated_at: now })

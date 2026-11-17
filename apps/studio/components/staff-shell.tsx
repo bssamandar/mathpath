@@ -49,6 +49,7 @@ export function StaffShell({ children }: { children: (me: Me) => ReactNode }) {
               <Link href="/risk">{t('nav.risk')}</Link>
               <Link href="/audit">{t('nav.audit')}</Link>
               <Link href="/promo-codes">{t('nav.promo')}</Link>
+              <Link href="/payments">{t('nav.payments')}</Link>
             </>
           )}
           <button type="button" className="link" onClick={() => void signOut()}>

@@ -21,7 +21,9 @@ import { BUSINESS_RULES } from '../config/tokens';
 import { readerLocale } from '../content/content.controller';
 import type { AuthedRequest } from '../identity/auth.guard';
 import { Access } from '../identity/permissions';
+import { clientOf } from '../identity/http';
 import { BillingService } from './billing.service';
+import { RefundService } from './refund.service';
 import { PromoService } from './promo.service';
 import { PAYMENT_PROVIDERS, type PaymentProvider } from './payment-provider';
 import type { ClickProvider } from './click/click';
@@ -50,6 +52,15 @@ const promoBody = z
     perUserLimit: z.number().int().min(1).max(100).optional(),
     validFrom: z.iso.datetime({ offset: true }),
     validTo: z.iso.datetime({ offset: true }),
+  })
+  .strict();
+
+const paymentSearch = z.object({ q: z.string().trim().min(3).max(64) });
+
+const refundBody = z
+  .object({
+    amountTiyin: z.number().int().min(1).max(100_000_000_000),
+    reason: z.string().trim().min(5).max(500),
   })
   .strict();
 
@@ -176,6 +187,47 @@ export class AdminPromoController {
   @Access('admin:billing')
   deactivate(@Req() req: AuthedRequest, @Param('promoCodeId') promoCodeId: unknown) {
     return this.promo.deactivate(req.auth!.userId, parseInput(id, promoCodeId));
+  }
+}
+
+/** Payments and refunds for the studio (UX §3.4; security plan §9). */
+@Controller('admin/payments')
+export class AdminPaymentsController {
+  constructor(private readonly refunds: RefundService) {}
+
+  @Get()
+  @Access('admin:billing')
+  search(@Req() req: AuthedRequest, @Query() query: unknown) {
+    return this.refunds.search(req.auth!, clientOf(req), parseInput(paymentSearch, query).q);
+  }
+
+  /**
+   * POST /admin/payments/{paymentId}/refunds. 202: a Click refund is already
+   * done or failed; a Payme one waits for the cancel in the Payme cabinet.
+   */
+  @Post(':paymentId/refunds')
+  @HttpCode(202)
+  @Access('admin:billing')
+  refund(
+    @Req() req: AuthedRequest,
+    @Param('paymentId') paymentId: unknown,
+    @Body() body: unknown,
+    @Headers('idempotency-key') key: unknown,
+  ) {
+    if (key === undefined) {
+      throw new ProblemException(
+        400,
+        'IDEMPOTENCY_KEY_REQUIRED',
+        'Send an Idempotency-Key header.',
+      );
+    }
+    return this.refunds.refund(
+      req.auth!,
+      clientOf(req),
+      parseInput(id, paymentId),
+      parseInput(refundBody, body),
+      parseInput(id, key),
+    );
   }
 }
 

@@ -21,6 +21,7 @@ export interface Metrics {
   transcodeJobs: Counter<'outcome'>;
   leagueWeeksClosed: Counter;
   auditChainBroken: Gauge;
+  billingMismatches: Gauge<'check'>;
   jobLastSuccess: Gauge<'task'>;
 }
 
@@ -103,6 +104,12 @@ export function createMetrics(service: string): Metrics {
     auditChainBroken: new Gauge({
       name: 'mathpath_audit_chain_broken',
       help: '1 when the last audit hash-chain check found a changed or missing entry, else 0.',
+      registers,
+    }),
+    billingMismatches: new Gauge({
+      name: 'mathpath_billing_reconciliation_mismatches',
+      help: 'Rows the last billing reconciliation found wrong, by check (0 when the books agree).',
+      labelNames: ['check'],
       registers,
     }),
     jobLastSuccess: new Gauge({

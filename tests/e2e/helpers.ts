@@ -111,3 +111,38 @@ export async function grantRole(phone: string, role: string): Promise<void> {
     await client.end();
   }
 }
+
+/**
+ * A Payme payment this parent made, written straight to the database as the
+ * Payme callbacks would leave it (paid order, active subscription), so the
+ * studio has something to refund without a Payme sandbox.
+ */
+export async function paidPaymeOrder(phone: string, amountTiyin = 9_900_000): Promise<void> {
+  const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await client.connect();
+  try {
+    await client.query(
+      `WITH owner AS (SELECT id FROM users WHERE phone_e164 = $1),
+            o AS (
+              INSERT INTO orders (id, owner_id, plan_code, plan_interval, student_ids, amount_tiyin,
+                                  provider, status, idempotency_key, expires_at, paid_at)
+              SELECT gen_random_uuid(), id, 'individual_monthly', 'month', ARRAY[id], $2,
+                     'payme', 'paid', gen_random_uuid()::text, now() + interval '1 hour', now()
+              FROM owner RETURNING id, owner_id),
+            s AS (
+              INSERT INTO subscriptions (id, owner_id, order_id, plan_code, status, seats,
+                                         price_tiyin, current_period_start, current_period_end)
+              SELECT gen_random_uuid(), owner_id, id, 'individual_monthly', 'active', 1, $2,
+                     now(), now() + interval '1 month'
+              FROM o RETURNING id, order_id)
+       INSERT INTO payments (id, order_id, subscription_id, provider, provider_txn_id,
+                             amount_tiyin, status, paid_at)
+       SELECT gen_random_uuid(), order_id, id, 'payme', substr(md5(random()::text), 1, 24), $2,
+              'paid', now()
+       FROM s`,
+      [`+998${phone}`, amountTiyin],
+    );
+  } finally {
+    await client.end();
+  }
+}
