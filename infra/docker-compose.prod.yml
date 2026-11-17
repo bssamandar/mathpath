@@ -66,6 +66,8 @@ networks:
     name: mathpath_private
     internal: true
   backup: {}
+  # Outbound internet for the worker (Eskiz) without joining the proxy's network.
+  worker-egress: {}
 
 volumes:
   postgres: {}
@@ -203,11 +205,18 @@ services:
       S3_SECRET_ACCESS_KEY: ${S3_APP_SECRET_ACCESS_KEY:?}
       TRANSCODE_CONCURRENCY: ${TRANSCODE_CONCURRENCY:-1}
       WORKER_METRICS_PORT: '9465'
+      # The Sunday report SMS (config/reports.yaml) goes out through Eskiz.
+      SMS_PROVIDER: eskiz
+      ESKIZ_EMAIL: ${ESKIZ_EMAIL:?}
+      ESKIZ_PASSWORD: ${ESKIZ_PASSWORD:?}
+      ESKIZ_SENDER: ${ESKIZ_SENDER:-4546}
+      WEB_ORIGIN: https://${DOMAIN:?}
       # ffmpeg writes source files and segments here: a disk volume, not RAM.
       TMPDIR: /work
     volumes:
       - transcode:/work
-    networks: [private]
+    # worker-egress lets it reach Eskiz; nothing listens on it.
+    networks: [private, worker-egress]
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }

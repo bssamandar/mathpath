@@ -8,7 +8,7 @@
  */
 import { type AppConfig } from '@mathpath/config';
 import type { Database } from '@mathpath/db';
-import { Module } from '@nestjs/common';
+import { Logger, Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import type { Kysely } from 'kysely';
 import { AuditService } from '../audit/audit.service';
@@ -53,6 +53,7 @@ import { TokenService } from './token.service';
               email: env.ESKIZ_EMAIL!,
               password: env.ESKIZ_PASSWORD!,
               sender: env.ESKIZ_SENDER,
+              log: (line) => new Logger('EskizSmsSender').log(line),
             })
           : new LogSmsSender(),
     },

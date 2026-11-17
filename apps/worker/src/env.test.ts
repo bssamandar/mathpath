@@ -22,4 +22,21 @@ describe('parseWorkerEnv', () => {
     expect(() => parseWorkerEnv({ ...base, S3_ENDPOINT: '' })).toThrow(/S3_ENDPOINT/);
     expect(() => parseWorkerEnv({ ...base, NODE_ENV: 'production' })).toThrow(/MEDIA_KEY_SECRET/);
   });
+
+  it('needs Eskiz and an https link in production', () => {
+    const prod = { ...base, NODE_ENV: 'production', MEDIA_KEY_SECRET: 'k'.repeat(64) };
+    expect(() => parseWorkerEnv(prod)).toThrow(/SMS_PROVIDER/);
+    expect(() => parseWorkerEnv({ ...prod, SMS_PROVIDER: 'eskiz' })).toThrow(/ESKIZ_EMAIL/);
+    const eskiz = {
+      ...prod,
+      SMS_PROVIDER: 'eskiz',
+      ESKIZ_EMAIL: 'ops@example.uz',
+      ESKIZ_PASSWORD: 'x',
+    };
+    expect(() => parseWorkerEnv(eskiz)).toThrow(/WEB_ORIGIN/);
+    expect(parseWorkerEnv({ ...eskiz, WEB_ORIGIN: 'https://mathpath.uz' })).toMatchObject({
+      SMS_PROVIDER: 'eskiz',
+      ESKIZ_SENDER: '4546',
+    });
+  });
 });

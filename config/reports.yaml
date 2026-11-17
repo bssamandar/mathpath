@@ -1,0 +1,13 @@
+# Sunday-evening SMS report to parents (UX S11; step 7.4b).
+weeklySms:
+  # subscribers | active_parents | off. Samandar chose subscribers on 2026-11-17:
+  # only parents with a paid subscription whose child practised that week.
+  audience: subscribers
+  # Sunday, Tashkent time. Sending stops at stopAt even if some are left;
+  # never later than 21:00 so nobody is woken.
+  sendAt: '19:00'
+  stopAt: '21:00'
+  # A ceiling per run, against a runaway query or bill.
+  maxPerRun: 20000
+  # Messages sent in parallel.
+  concurrency: 4

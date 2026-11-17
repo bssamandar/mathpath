@@ -649,6 +649,19 @@ export interface RefundsTable {
   completed_at: NullableTimestamp;
 }
 
+export type ReportSmsStatus = 'sending' | 'sent' | 'failed';
+
+export interface ReportSmsLogTable {
+  parent_id: string;
+  /** The Monday of the reported week. */
+  week_start: ColumnType<string, string, never>;
+  status: ColumnType<ReportSmsStatus, ReportSmsStatus | undefined, ReportSmsStatus>;
+  children: number;
+  failure: string | null;
+  created_at: ColumnType<Date, Date | undefined, never>;
+  finished_at: NullableTimestamp;
+}
+
 export interface PaymentCallbacksTable {
   id: string;
   provider: string;
@@ -767,6 +780,7 @@ export interface Database {
   payments: PaymentsTable;
   payment_callbacks: PaymentCallbacksTable;
   refunds: RefundsTable;
+  report_sms_log: ReportSmsLogTable;
   promo_codes: PromoCodesTable;
   promo_redemptions: PromoRedemptionsTable;
   trials: TrialsTable;

@@ -624,6 +624,12 @@ the provider started the refund, such as a Payme cabinet cancel),
 requested or succeeded refund per payment (partial unique index): the providers
 refund whole payments only.
 
+**report_sms_log**: PK (`parent_id`, `week_start`), `status`
+(`sending`,`sent`,`failed`), `children` (how many were in the message),
+`failure` (set exactly when failed), `created_at`, `finished_at` (NULL exactly
+while sending). Written before the Sunday report SMS goes out, so a parent gets
+at most one per week; no phone number is stored here.
+
 **payment_callbacks**: a raw log of every provider call.
 | Column | Type | Notes |
 |---|---|---|

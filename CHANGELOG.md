@@ -225,6 +225,13 @@ project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   refunds that left a subscription running, refund records out of step, stuck
   payments and unfinished Payme refund requests, with an alert on any finding.
   Guide: `docs/guides/payments.md`.
+- Sunday-evening report SMS to parents (worker, 19:00–21:00 Tashkent,
+  `config/reports.yaml`): one message per parent with each active child's
+  minutes, questions and mastered topics and a link to the parent page; by
+  default only parents with a paid subscription. At most one per parent and
+  week (`report_sms_log`), failures are not retried, its own metric and the
+  ReportSmsFailing alert. SMS code moved to `@mathpath/sms`, shared by the API
+  and the worker. Guide: `docs/guides/reports.md`.
 - Errors are returned as RFC 9457 problem details with a stable `code` and request ID.
 - CI (format, lint, typecheck, tests with an 80% coverage gate, build) and security
   scanning (gitleaks, pnpm audit, OSV-Scanner, Semgrep, CodeQL); Renovate.

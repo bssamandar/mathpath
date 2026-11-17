@@ -31,5 +31,14 @@ export {
   migrations,
 } from './migrator';
 export * from './schema';
+export {
+  claimReportSms,
+  finishReportSms,
+  type RecipientQuery,
+  type ReportAudience,
+  type ReportChild,
+  type ReportRecipient,
+  weeklyReportRecipients,
+} from './weekly-report';
 export { createTestDb } from './testing';
 export { DEMO_IDS, seedDemoContent } from './seeds/demo-content';

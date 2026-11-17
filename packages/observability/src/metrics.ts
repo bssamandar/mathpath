@@ -22,6 +22,7 @@ export interface Metrics {
   leagueWeeksClosed: Counter;
   auditChainBroken: Gauge;
   billingMismatches: Gauge<'check'>;
+  reportSms: Counter<'outcome'>;
   jobLastSuccess: Gauge<'task'>;
 }
 
@@ -110,6 +111,12 @@ export function createMetrics(service: string): Metrics {
       name: 'mathpath_billing_reconciliation_mismatches',
       help: 'Rows the last billing reconciliation found wrong, by check (0 when the books agree).',
       labelNames: ['check'],
+      registers,
+    }),
+    reportSms: new Counter({
+      name: 'mathpath_report_sms_total',
+      help: 'Weekly report SMS to parents by outcome (sent, failed). Separate from the sign-in SMS budget.',
+      labelNames: ['outcome'],
       registers,
     }),
     jobLastSuccess: new Gauge({
