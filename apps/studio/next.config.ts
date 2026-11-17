@@ -1,3 +1,4 @@
+import path from 'node:path';
 import type { NextConfig } from 'next';
 
 /**
@@ -25,8 +26,18 @@ const apiOrigin =
   process.env.API_ORIGIN ??
   (process.env.NODE_ENV === 'production' ? null : 'http://localhost:4000');
 
+/**
+ * Production images run the self-contained server Next.js traces into
+ * .next/standalone (infra/docker/next.Dockerfile sets NEXT_OUTPUT). Local runs
+ * keep `next start`, which does not work with standalone output.
+ */
+const standalone = process.env.NEXT_OUTPUT === 'standalone';
+
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  ...(standalone
+    ? { output: 'standalone', outputFileTracingRoot: path.join(__dirname, '..', '..') }
+    : {}),
   reactStrictMode: true,
   async headers() {
     return [{ source: '/:path*', headers: securityHeaders }];

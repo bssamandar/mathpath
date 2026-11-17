@@ -72,6 +72,13 @@ groups:
         labels: { severity: warn }
         annotations:
           summary: 'Many requests are rate-limited: possible scraping or SMS pumping.'
+      - alert: WafBlockSpike
+        # The edge WAF answers 403; a burst means an attack or a false positive
+        # that blocks real users (check the proxy logs in Grafana).
+        expr: sum(increase(caddy_http_request_duration_seconds_count{job="proxy",code="403"}[10m])) > 200
+        labels: { severity: warn }
+        annotations:
+          summary: 'The edge WAF blocked {{ $value | humanize }} requests in 10 minutes.'
       - alert: LoginFailureSpike
         expr: sum(increase(mathpath_audit_events_total{action="auth.login_failed"}[15m])) > 100
         labels: { severity: warn }
@@ -128,6 +135,27 @@ groups:
         labels: { severity: page }
         annotations:
           summary: 'No successful database backup in the last 26 hours.'
+      - alert: MediaBackupMissing
+        expr: |
+          time() - mathpath_media_backup_last_success_timestamp_seconds > 50 * 3600
+            or absent(mathpath_media_backup_last_success_timestamp_seconds)
+        for: 30m
+        labels: { severity: warn }
+        annotations:
+          summary: 'The media bucket has not been copied off-site for two days.'
+      - alert: RestoreDrillMissing
+        expr: |
+          time() - mathpath_restore_drill_last_success_timestamp_seconds > 35 * 86400
+            or absent(mathpath_restore_drill_last_success_timestamp_seconds)
+        for: 1h
+        labels: { severity: warn }
+        annotations:
+          summary: 'No successful restore drill for over 35 days (security plan C-51).'
+      - alert: RestoreDrillSlow
+        expr: mathpath_restore_drill_duration_seconds > 4 * 3600
+        labels: { severity: warn }
+        annotations:
+          summary: 'The last restore drill took longer than the 4-hour recovery target.'
       - alert: CertificateExpiresSoon
         expr: probe_ssl_earliest_cert_expiry{job="blackbox"} - time() < 14 * 86400
         labels: { severity: warn }

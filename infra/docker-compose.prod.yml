@@ -1,0 +1,403 @@
+# Production stack on one server in Uzbekistan (architecture §2, §7.5).
+# Started only through infra/deploy.sh, which passes both env files:
+#
+#   infra/.env.prod     secrets and settings, written by hand on the server
+#                       (template: infra/env.prod.example), never committed
+#   infra/release.env   image digests of the release, from the GitHub release
+#
+# Networks:
+#   edge     proxy, web, studio, api. Has internet access (the API
+#            calls Eskiz, Turnstile, HIBP, Payme, Click).
+#   private  everything that holds data. `internal`: no internet at all.
+#            The monitoring stack joins it (infra/monitoring).
+#   backup   Postgres only, so pgBackRest can reach the off-site backup
+#            storage. Nothing listens on it.
+#
+# Only the proxy publishes ports (80, 443). Every app container runs read-only,
+# without Linux capabilities and without privilege escalation (C-37).
+name: mathpath
+
+x-logging: &logging
+  driver: json-file
+  options: { max-size: 50m, max-file: '5' }
+
+x-hardened: &hardened # Alloy ships logs only from containers with this label (infra/monitoring).
+  labels: { logging: mathpath }
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: ['no-new-privileges:true']
+  logging: *logging
+  restart: unless-stopped
+
+# Media storage settings, shared by the API, worker and provisioning step.
+x-media-env: &media-env
+  S3_ENDPOINT: http://seaweedfs:8333
+  S3_PUBLIC_ENDPOINT: https://media.${DOMAIN:?}
+  S3_REGION: us-east-1
+  S3_BUCKET: ${S3_BUCKET:-mathpath-media}
+  S3_FORCE_PATH_STYLE: 'true'
+  MEDIA_KEY_SECRET: ${MEDIA_KEY_SECRET:?}
+  MEDIA_BROWSER_ORIGINS: https://${DOMAIN},https://studio.${DOMAIN}
+
+# pgBackRest reads every option from PGBACKREST_* variables (docs/guides/backups.md).
+x-pgbackrest-env: &pgbackrest-env
+  PGBACKREST_STANZA: mathpath
+  PGBACKREST_PG1_PATH: /var/lib/postgresql/data
+  PGBACKREST_REPO1_TYPE: s3
+  PGBACKREST_REPO1_PATH: /pgbackrest
+  PGBACKREST_REPO1_S3_ENDPOINT: ${BACKUP_S3_ENDPOINT:?}
+  PGBACKREST_REPO1_S3_REGION: ${BACKUP_S3_REGION:-us-east-1}
+  PGBACKREST_REPO1_S3_BUCKET: ${BACKUP_S3_BUCKET:?}
+  PGBACKREST_REPO1_S3_KEY: ${BACKUP_S3_ACCESS_KEY_ID:?}
+  PGBACKREST_REPO1_S3_KEY_SECRET: ${BACKUP_S3_SECRET_ACCESS_KEY:?}
+  PGBACKREST_REPO1_S3_URI_STYLE: ${BACKUP_S3_URI_STYLE:-path}
+  PGBACKREST_REPO1_CIPHER_TYPE: aes-256-cbc
+  PGBACKREST_REPO1_CIPHER_PASS: ${BACKUP_CIPHER_PASS:?}
+  PGBACKREST_REPO1_RETENTION_FULL: ${BACKUP_RETENTION_FULL:-14}
+  PGBACKREST_COMPRESS_TYPE: zst
+  PGBACKREST_PROCESS_MAX: '2'
+  PGBACKREST_START_FAST: 'y'
+  PGBACKREST_LOG_LEVEL_CONSOLE: info
+  PGBACKREST_LOG_LEVEL_FILE: 'off'
+
+networks:
+  edge: {}
+  private:
+    name: mathpath_private
+    internal: true
+  backup: {}
+
+volumes:
+  postgres: {}
+  redis: {}
+  seaweedfs: {}
+  caddy-data: {}
+  caddy-config: {}
+  transcode: {}
+
+services:
+  # ── Edge ──────────────────────────────────────────────────
+  proxy:
+    <<: *hardened
+    image: ${IMAGE_PROXY:?}
+    # Binding ports 80 and 443 needs this one capability.
+    cap_add: [NET_BIND_SERVICE]
+    environment:
+      DOMAIN: ${DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL:?}
+      EDGE_RATE_LIMIT_PER_MINUTE: ${EDGE_RATE_LIMIT_PER_MINUTE:-3000}
+    ports:
+      - 80:80
+      - 443:443
+      - 443:443/udp
+    volumes:
+      - caddy-data:/data
+      - caddy-config:/config
+    tmpfs: [/tmp]
+    networks: [edge, private]
+    depends_on: [web, studio, api]
+
+  web:
+    <<: *hardened
+    image: ${IMAGE_WEB:?}
+    environment:
+      MEDIA_ORIGIN: https://media.${DOMAIN}
+    tmpfs: ['/app/apps/web/.next/cache:uid=65532,gid=65532']
+    networks: [edge]
+    healthcheck:
+      test:
+        - CMD
+        - /nodejs/bin/node
+        - -e
+        - fetch('http://127.0.0.1:3000/login').then((r) => process.exit(r.ok ? 0: 1), () => process.exit(1))
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  studio:
+    <<: *hardened
+    image: ${IMAGE_STUDIO:?}
+    environment:
+      MEDIA_ORIGIN: https://media.${DOMAIN}
+    tmpfs: ['/app/apps/studio/.next/cache:uid=65532,gid=65532']
+    networks: [edge]
+    healthcheck:
+      test:
+        - CMD
+        - /nodejs/bin/node
+        - -e
+        - fetch('http://127.0.0.1:3000/login').then((r) => process.exit(r.ok ? 0: 1), () => process.exit(1))
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # ── Application ───────────────────────────────────────────
+  api:
+    <<: *hardened
+    image: ${IMAGE_API:?}
+    environment:
+      <<: *media-env
+      NODE_ENV: production
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      APP_VERSION: ${APP_VERSION:?}
+      PORT: '4000'
+      METRICS_PORT: '9464'
+      CORS_ORIGINS: https://${DOMAIN},https://studio.${DOMAIN}
+      # Caddy is the only proxy; add 1 when the hosting provider's load
+      # balancer sits in front of it.
+      TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-1}
+      DATABASE_URL: postgres://mathpath_app:${MATHPATH_APP_PASSWORD:?}@postgres:5432/mathpath
+      REDIS_URL: redis://redis:6379
+      S3_ACCESS_KEY_ID: ${S3_APP_ACCESS_KEY_ID:?}
+      S3_SECRET_ACCESS_KEY: ${S3_APP_SECRET_ACCESS_KEY:?}
+      JWT_PRIVATE_KEY: ${JWT_PRIVATE_KEY:?}
+      JWT_KEY_ID: ${JWT_KEY_ID:?}
+      JWT_PREVIOUS_PUBLIC_KEY: ${JWT_PREVIOUS_PUBLIC_KEY:-}
+      JWT_PREVIOUS_KEY_ID: ${JWT_PREVIOUS_KEY_ID:-}
+      AUTH_HMAC_SECRET: ${AUTH_HMAC_SECRET:?}
+      SMS_PROVIDER: eskiz
+      ESKIZ_EMAIL: ${ESKIZ_EMAIL:?}
+      ESKIZ_PASSWORD: ${ESKIZ_PASSWORD:?}
+      ESKIZ_SENDER: ${ESKIZ_SENDER:-4546}
+      CAPTCHA_PROVIDER: turnstile
+      TURNSTILE_SECRET_KEY: ${TURNSTILE_SECRET_KEY:?}
+      BREACHED_PASSWORD_CHECK: hibp
+      PAYMENT_PROVIDERS: ${PAYMENT_PROVIDERS:-}
+      PAYME_MERCHANT_ID: ${PAYME_MERCHANT_ID:-}
+      PAYME_KEY: ${PAYME_KEY:-}
+      PAYME_CHECKOUT_URL: ${PAYME_CHECKOUT_URL:-https://checkout.paycom.uz}
+      CLICK_SERVICE_ID: ${CLICK_SERVICE_ID:-}
+      CLICK_MERCHANT_ID: ${CLICK_MERCHANT_ID:-}
+      CLICK_SECRET_KEY: ${CLICK_SECRET_KEY:-}
+      CLICK_CHECKOUT_URL: ${CLICK_CHECKOUT_URL:-https://my.click.uz/services/pay}
+    tmpfs: [/tmp]
+    networks: [edge, private]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      seaweedfs: { condition: service_started }
+    healthcheck:
+      test:
+        - CMD
+        - /nodejs/bin/node
+        - -e
+        - fetch('http://127.0.0.1:4000/api/v1/health/ready').then((r) => process.exit(r.ok ? 0: 1), () => process.exit(1))
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  worker:
+    <<: *hardened
+    image: ${IMAGE_WORKER:?}
+    environment:
+      <<: *media-env
+      NODE_ENV: production
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      APP_VERSION: ${APP_VERSION:?}
+      DATABASE_URL: postgres://mathpath_app:${MATHPATH_APP_PASSWORD:?}@postgres:5432/mathpath
+      REDIS_URL: redis://redis:6379
+      S3_ACCESS_KEY_ID: ${S3_APP_ACCESS_KEY_ID:?}
+      S3_SECRET_ACCESS_KEY: ${S3_APP_SECRET_ACCESS_KEY:?}
+      TRANSCODE_CONCURRENCY: ${TRANSCODE_CONCURRENCY:-1}
+      WORKER_METRICS_PORT: '9465'
+      # ffmpeg writes source files and segments here: a disk volume, not RAM.
+      TMPDIR: /work
+    volumes:
+      - transcode:/work
+    networks: [private]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:9465/metrics').then((r) => process.exit(r.ok ? 0: 1), () => process.exit(1))
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # ── Data ──────────────────────────────────────────────────
+  postgres:
+    image: ${IMAGE_POSTGRES:?}
+    labels: { logging: mathpath }
+    environment:
+      <<: *pgbackrest-env
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_SUPERUSER_PASSWORD:?}
+      POSTGRES_DB: mathpath
+      POSTGRES_INITDB_ARGS: --data-checksums
+      MATHPATH_MIGRATOR_PASSWORD: ${MATHPATH_MIGRATOR_PASSWORD:?}
+      MATHPATH_APP_PASSWORD: ${MATHPATH_APP_PASSWORD:?}
+      MATHPATH_MONITORING_PASSWORD: ${MATHPATH_MONITORING_PASSWORD:?}
+    command:
+      - postgres
+      # Continuous WAL archiving: a WAL file is shipped at least every
+      # 5 minutes, which keeps the recovery point well inside the 15-minute RPO.
+      - -c
+      - wal_level=replica
+      - -c
+      - archive_mode=on
+      - -c
+      - archive_command=pgbackrest --stanza=mathpath archive-push %p
+      - -c
+      - archive_timeout=300
+      - -c
+      - max_connections=200
+      - -c
+      - shared_buffers=${PG_SHARED_BUFFERS:-1GB}
+      - -c
+      - effective_cache_size=${PG_EFFECTIVE_CACHE_SIZE:-3GB}
+      - -c
+      - password_encryption=scram-sha-256
+      - -c
+      - log_min_duration_statement=1000
+      - -c
+      - log_connections=off
+      # Slow-query logs show the SQL but never its values (phone numbers etc.).
+      - -c
+      - log_parameter_max_length=0
+      - -c
+      - log_parameter_max_length_on_error=0
+    shm_size: 256mb
+    stop_grace_period: 60s
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    # The entrypoint starts as root and drops to the postgres user.
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID]
+    security_opt: ['no-new-privileges:true']
+    networks: [private, backup]
+    logging: *logging
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d mathpath']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: ${IMAGE_REDIS:?}
+    labels: { logging: mathpath }
+    # Sessions live in Postgres; Redis holds limits, counters and job queues.
+    # BullMQ needs `noeviction`; AOF keeps queued jobs across restarts.
+    command:
+      [
+        redis-server,
+        --appendonly,
+        'yes',
+        --maxmemory,
+        '${REDIS_MAXMEMORY:-512mb}',
+        --maxmemory-policy,
+        noeviction,
+      ]
+    volumes:
+      - redis:/data
+    cap_drop: [ALL]
+    cap_add: [SETGID, SETUID]
+    security_opt: ['no-new-privileges:true']
+    networks: [private]
+    logging: *logging
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  # S3-compatible media storage. To use the hosting provider's object storage
+  # instead, remove this service and point S3_* at it (docs/guides/deploy.md).
+  seaweedfs:
+    image: ${IMAGE_SEAWEEDFS:?}
+    command:
+      - server
+      - -dir=/data
+      - -ip.bind=0.0.0.0
+      - -s3
+      - -s3.port=8333
+      - -s3.config=/etc/seaweedfs/s3.json
+      - -master.volumeSizeLimitMB=1024
+      - -volume.max=0
+    volumes:
+      - seaweedfs:/data
+      # Written by deploy.sh from .env.prod (mode 0600, not committed).
+      - ./seaweedfs/s3.prod.json:/etc/seaweedfs/s3.json:ro
+    security_opt: ['no-new-privileges:true']
+    # The proxy reaches it over the private network; it needs no internet.
+    networks: [private]
+    logging: *logging
+    restart: unless-stopped
+
+  # ── One-off tasks (deploy.sh and backups/; never started by `up`) ──
+  migrate:
+    image: ${IMAGE_API:?}
+    profiles: [tasks]
+    command: [node_modules/@mathpath/db/dist/cli.js, latest]
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://mathpath_migrator:${MATHPATH_MIGRATOR_PASSWORD:?}@postgres:5432/mathpath
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ['no-new-privileges:true']
+    networks: [private]
+
+  provision-storage:
+    image: ${IMAGE_API:?}
+    profiles: [tasks]
+    command: [node_modules/@mathpath/media/dist/cli.js, provision]
+    environment:
+      <<: *media-env
+      S3_ACCESS_KEY_ID: ${S3_ADMIN_ACCESS_KEY_ID:?}
+      S3_SECRET_ACCESS_KEY: ${S3_ADMIN_SECRET_ACCESS_KEY:?}
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ['no-new-privileges:true']
+    networks: [private]
+
+  # Nightly copy of the media bucket to the off-site backup storage.
+  media-backup:
+    image: ${IMAGE_RCLONE:?}
+    profiles: [tasks]
+    command:
+      - sync
+      - src:${S3_BUCKET:-mathpath-media}
+      - dst:${BACKUP_S3_BUCKET}/media/current
+      - --backup-dir=dst:${BACKUP_S3_BUCKET}/media/removed/${MEDIA_BACKUP_DAY:-undated}
+      - --fast-list
+      - --stats-one-line
+      - -v
+    environment:
+      RCLONE_CONFIG_SRC_TYPE: s3
+      RCLONE_CONFIG_SRC_PROVIDER: SeaweedFS
+      RCLONE_CONFIG_SRC_ENDPOINT: http://seaweedfs:8333
+      RCLONE_CONFIG_SRC_ACCESS_KEY_ID: ${S3_ADMIN_ACCESS_KEY_ID}
+      RCLONE_CONFIG_SRC_SECRET_ACCESS_KEY: ${S3_ADMIN_SECRET_ACCESS_KEY}
+      RCLONE_CONFIG_DST_TYPE: s3
+      RCLONE_CONFIG_DST_PROVIDER: Other
+      RCLONE_CONFIG_DST_ENDPOINT: https://${BACKUP_S3_ENDPOINT}
+      RCLONE_CONFIG_DST_REGION: ${BACKUP_S3_REGION:-us-east-1}
+      RCLONE_CONFIG_DST_ACCESS_KEY_ID: ${BACKUP_S3_ACCESS_KEY_ID}
+      RCLONE_CONFIG_DST_SECRET_ACCESS_KEY: ${BACKUP_S3_SECRET_ACCESS_KEY}
+      RCLONE_CONFIG_DST_FORCE_PATH_STYLE: 'true'
+      RCLONE_CONFIG_DST_SERVER_SIDE_ENCRYPTION: ${BACKUP_S3_SSE:-}
+    read_only: true
+    tmpfs: [/tmp, /config]
+    cap_drop: [ALL]
+    security_opt: ['no-new-privileges:true']
+    networks: [private, backup]
+
+  # Monthly restore drill (C-51): restores the latest backup into a scratch
+  # volume, replays the archived WAL, checks the data and is thrown away.
+  restore-drill:
+    image: ${IMAGE_POSTGRES:?}
+    profiles: [tasks]
+    entrypoint: [bash, /drill/restore-drill.sh]
+    environment:
+      <<: *pgbackrest-env
+    volumes:
+      - ./backup/restore-drill.sh:/drill/restore-drill.sh:ro
+      - type: volume
+        target: /drill/data
+    networks: [backup]

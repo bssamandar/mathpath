@@ -433,6 +433,17 @@ returned in error responses so support can trace a problem.
 - **Audit log:** append-only. The application's DB role has `INSERT` and
   `SELECT` only on `audit_log`.
 
+### 7.8 Deployment
+
+The MVP runs as one Docker Compose stack on one server in Uzbekistan
+(`infra/docker-compose.prod.yml`). Caddy is the edge: TLS certificates, the
+OWASP CRS WAF (Coraza), a per-IP flood limit and the three hosts (`DOMAIN` for
+web and `/api`, `studio.DOMAIN`, `media.DOMAIN` for storage). Data services sit
+on an internal network with no internet access. Images are built, scanned and
+signed in CI and deployed by digest with `infra/deploy.sh`. Postgres archives
+WAL continuously to off-site storage with pgBackRest, and a monthly drill
+restores it. Details: docs/guides/deploy.md and docs/guides/backups.md.
+
 ---
 
 ## 8. Extensibility: how the MVP grows

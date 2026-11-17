@@ -10,9 +10,14 @@
 name: mathpath-monitoring
 
 networks:
+  # The app stack's private network. It has no internet access (`internal`).
   mathpath:
     external: true
     name: mathpath_private
+  # Internet access for the services that need it: Alertmanager sends to
+  # Telegram and email, the blackbox exporter checks the public URLs, and
+  # Grafana publishes its port on 127.0.0.1 (impossible on an internal network).
+  outbound: {}
 
 volumes:
   prometheus: {}
@@ -40,7 +45,7 @@ services:
       - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
       - ./secrets:/etc/alertmanager/secrets:ro
       - alertmanager:/alertmanager
-    networks: [mathpath]
+    networks: [mathpath, outbound]
     restart: unless-stopped
 
   blackbox-exporter:
@@ -48,7 +53,7 @@ services:
     command: [--config.file=/etc/blackbox/blackbox.yml]
     volumes:
       - ./blackbox:/etc/blackbox:ro
-    networks: [mathpath]
+    networks: [mathpath, outbound]
     restart: unless-stopped
 
   node-exporter:
@@ -115,5 +120,6 @@ services:
       - grafana:/var/lib/grafana
     ports:
       - 127.0.0.1:3300:3000
-    networks: [mathpath]
+    # A published port needs a non-internal network.
+    networks: [mathpath, outbound]
     restart: unless-stopped

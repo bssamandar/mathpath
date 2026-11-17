@@ -193,6 +193,17 @@ project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Prometheus, Alertmanager (Telegram and email), Loki, Alloy and Grafana with
   alert rules for the security plan's C-39 list and an overview dashboard.
   CI checks the monitoring configs. Guide: `docs/guides/monitoring.md`.
+- Production deployment: images for web and studio (Next.js standalone,
+  distroless), the edge proxy (Caddy with the Coraza OWASP CRS WAF and a per-IP
+  flood limit) and Postgres with pgBackRest; `infra/docker-compose.prod.yml` with
+  an internet-less data network, read-only containers and separate database roles
+  (`mathpath_migrator`; `mathpath_app`, which cannot change the schema or the
+  audit log; `monitoring`); `infra/deploy.sh` (signature check, migrations,
+  grants, storage set-up, health check, rollback); a release workflow that
+  builds, scans with Trivy, signs with Sigstore and publishes image digests;
+  continuous WAL archiving, nightly encrypted backups, a media sync and a monthly
+  automated restore drill, with alerts. Guides: `docs/guides/deploy.md`,
+  `docs/guides/backups.md`.
 - Errors are returned as RFC 9457 problem details with a stable `code` and request ID.
 - CI (format, lint, typecheck, tests with an 80% coverage gate, build) and security
   scanning (gitleaks, pnpm audit, OSV-Scanner, Semgrep, CodeQL); Renovate.

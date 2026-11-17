@@ -13,5 +13,6 @@ export {
   type S3Settings,
   type StoredObject,
 } from './storage';
+export { provisionStorage } from './provision';
 export { MediaKeyVault } from './vault';
 export { TRANSCODE_QUEUE, type TranscodeJob } from './queue';
