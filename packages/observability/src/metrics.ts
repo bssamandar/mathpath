@@ -30,7 +30,13 @@ export interface Metrics {
  * standard exporters.
  */
 export const EXTERNAL_METRICS = [
+  // Written by infra/backup/*.sh into node-exporter's textfile directory.
   'mathpath_backup_last_success_timestamp_seconds',
+  'mathpath_media_backup_last_success_timestamp_seconds',
+  'mathpath_restore_drill_last_success_timestamp_seconds',
+  'mathpath_restore_drill_duration_seconds',
+  // Caddy, the edge proxy.
+  'caddy_http_request_duration_seconds_count',
   'probe_success',
   'probe_ssl_earliest_cert_expiry',
   'up',

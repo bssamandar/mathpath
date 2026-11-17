@@ -15,7 +15,7 @@ monitoring, no third-party log store.
 | Prometheus, Alertmanager, Loki, Alloy, Grafana | `infra/monitoring/docker-compose.yml`            | Collect metrics and logs, send alerts, show dashboards                                                    |
 
 The metrics ports are for the private network only. The reverse proxy must
-never route them, and `/health/ready` stays internal too (step 7.2 config).
+never route them, and `/health/ready` stays internal too (`infra/proxy/Caddyfile`).
 
 ## Starting the stack
 
@@ -23,7 +23,8 @@ never route them, and `/health/ready` stays internal too (step 7.2 config).
    - `telegram_bot_token`: from @BotFather;
    - `smtp_password`: for the alert mailbox;
    - `grafana_admin_password`;
-   - `postgres_monitoring_password`: for a `monitoring` role with `pg_monitor`.
+   - `postgres_monitoring_password`: the same value as `MATHPATH_MONITORING_PASSWORD`
+     in `infra/.env.prod` (the `monitoring` role is created with the database).
 2. In `alertmanager/alertmanager.yml`, set the Telegram chat ID, the SMTP host and the addresses.
 3. In `prometheus/probes.yml`, set the real domain.
 4. Run `docker compose -f infra/monitoring/docker-compose.yml up -d`, after the app stack,
@@ -49,7 +50,9 @@ without sound. Thresholds are starting values; tune them after launch.
 | StaffRoleGranted                                              | Confirm in Studio → Audit log (`user.role.grant`) that you or another admin did it                                                             |
 | AuditChainBroken                                              | Treat as a security incident: someone changed or deleted audit entries. Do not restart anything; copy the database and the audit backups first |
 | SmsSpendHourly, SmsSpendDaily                                 | Look for SMS pumping (RateLimitSpike, risk queue). At 100% the API already asks every code request for a CAPTCHA                               |
-| BackupMissing                                                 | Check the backup job log (step 7.2); run a backup by hand                                                                                      |
+| BackupMissing, MediaBackupMissing                             | `journalctl -u mathpath-backup.service`; run `infra/backup/backup.sh` by hand (backups.md)                                                     |
+| RestoreDrillMissing, RestoreDrillSlow                         | `journalctl -u mathpath-restore-drill.service`; run `infra/backup/restore-drill-run.sh` (backups.md)                                           |
+| WafBlockSpike                                                 | Proxy logs in Grafana (`{service="proxy"}`) : an attack, or a CRS false positive blocking users (deploy.md, edge rules)                        |
 | CertificateExpiresSoon                                        | Caddy renews automatically; if it did not, check its logs and DNS                                                                              |
 | AuditCheckNotRunning, LeagueCloseNotRunning, TranscodeErrors  | Worker logs (`{service="worker"}`); the jobs are safe to run again                                                                             |
 

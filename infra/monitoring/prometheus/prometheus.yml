@@ -20,6 +20,10 @@ scrape_configs:
   - job_name: worker
     static_configs:
       - targets: ['worker:9465']
+  - job_name: proxy
+    # Caddy's HTTP metrics (infra/proxy/Caddyfile, private port 9180).
+    static_configs:
+      - targets: ['proxy:9180']
   - job_name: postgres
     static_configs:
       - targets: ['postgres-exporter:9187']
