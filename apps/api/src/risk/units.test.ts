@@ -89,8 +89,8 @@ describe('EskizSmsSender', () => {
       password: 'p',
       sender: '4546',
       fetchFn: fetchFn as unknown as typeof fetch,
+      log: () => undefined,
     });
-    vi.spyOn(sender['logger'], 'log').mockImplementation(() => undefined);
     return { sender, calls };
   }
 

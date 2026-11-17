@@ -1,20 +1,25 @@
 import 'reflect-metadata';
 import type { AppConfig } from '@mathpath/config';
 import {
+  claimReportSms,
   closeFinishedLeagues,
   createDb,
+  finishReportSms,
   RECONCILIATION_CHECKS,
   reconcileBilling,
   verifyAuditChain,
+  weeklyReportRecipients,
 } from '@mathpath/db';
 import { objectStoreFromEnv, vaultFromEnv } from '@mathpath/media';
 import { createMetrics, JsonLogger, startMetricsServer } from '@mathpath/observability';
+import { EskizSmsSender, LogSmsSender, type SmsSender } from '@mathpath/sms';
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { startAuditCheck } from './audit/check-job';
 import { startReconciliation } from './billing/reconcile-job';
 import { parseWorkerEnv } from './env';
 import { startLeagueClose } from './leagues/close-job';
+import { startWeeklySms } from './reports/weekly-sms-job';
 import { startTranscodeConsumer } from './transcode/consumer';
 import { Transcoder } from './transcode/transcoder';
 import { BUSINESS_RULES, WorkerModule } from './worker.module';
@@ -77,6 +82,43 @@ async function bootstrap(): Promise<void> {
     { redisUrl: env.REDIS_URL },
   );
 
+  const smsLogger = new Logger('SMS');
+  const sender: SmsSender =
+    env.SMS_PROVIDER === 'eskiz'
+      ? new EskizSmsSender({
+          email: env.ESKIZ_EMAIL!,
+          password: env.ESKIZ_PASSWORD!,
+          sender: env.ESKIZ_SENDER,
+          log: (line) => smsLogger.log(line),
+        })
+      : new LogSmsSender((line) => smsLogger.log(line));
+  const weeklySmsRules = rules.reports.weeklySms;
+  const reportLogger = new Logger('weekly-report-sms');
+  const reports = await startWeeklySms(
+    {
+      rules: weeklySmsRules,
+      sender,
+      link: new URL('/parent', env.WEB_ORIGIN).toString(),
+      now: () => new Date(),
+      recipients: (weekStart, limit) =>
+        weeklySmsRules.audience === 'off'
+          ? Promise.resolve([])
+          : weeklyReportRecipients(db, {
+              weekStart,
+              now: new Date(),
+              audience: weeklySmsRules.audience,
+              limit,
+            }),
+      claim: (parentId, weekStart, children) => claimReportSms(db, parentId, weekStart, children),
+      finish: (parentId, weekStart, outcome) =>
+        finishReportSms(db, parentId, weekStart, outcome, new Date()),
+      onOutcome: (outcome) => metrics.reportSms.inc({ outcome }),
+      warn: (line) => reportLogger.warn(line),
+    },
+    { onRun: () => succeeded('weekly_report_sms') },
+    { redisUrl: env.REDIS_URL },
+  );
+
   const server =
     env.WORKER_METRICS_PORT > 0
       ? await startMetricsServer(metrics.registry, { port: env.WORKER_METRICS_PORT })
@@ -88,6 +130,7 @@ async function bootstrap(): Promise<void> {
     await leagues.stop();
     await audit.stop();
     await billing.stop();
+    await reports.stop();
     server?.close();
     await db.destroy();
     await app.close();
@@ -95,7 +138,7 @@ async function bootstrap(): Promise<void> {
   process.once('SIGTERM', () => void stop());
   process.once('SIGINT', () => void stop());
   logger.log(
-    `Worker started: ${consumer.name} (concurrency ${env.TRANSCODE_CONCURRENCY}), ${leagues.worker.name}, ${audit.worker.name}, ${billing.worker.name}.`,
+    `Worker started: ${consumer.name} (concurrency ${env.TRANSCODE_CONCURRENCY}), ${leagues.worker.name}, ${audit.worker.name}, ${billing.worker.name}, ${reports.worker.name}.`,
   );
 }
 

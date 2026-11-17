@@ -323,6 +323,34 @@ export const contentSchema = z
     path: ['video', 'ladder'],
   });
 
+/**
+ * The Sunday-evening SMS report to parents (UX S11; step 7.4b). Sent by the
+ * worker; never after 21:00 Tashkent time, so families are not woken.
+ */
+export const reportsSchema = z
+  .object({
+    weeklySms: z
+      .object({
+        // subscribers: parents with a paid subscription; active_parents: every
+        // parent whose child practised; off: nothing is sent.
+        audience: z.enum(['subscribers', 'active_parents', 'off']),
+        sendAt: clockTime,
+        stopAt: clockTime,
+        maxPerRun: positiveInt,
+        concurrency: positiveInt.max(16),
+      })
+      .strict()
+      .refine((w) => w.sendAt < w.stopAt, {
+        message: 'sendAt must be before stopAt',
+        path: ['stopAt'],
+      })
+      .refine((w) => w.stopAt <= '21:00', {
+        message: 'no report SMS after 21:00',
+        path: ['stopAt'],
+      }),
+  })
+  .strict();
+
 /** Maps each config file name (without .yaml) to its schema. */
 export const configSchemas = {
   learning: learningSchema,
@@ -332,6 +360,7 @@ export const configSchemas = {
   risk: riskSchema,
   content: contentSchema,
   auth: authSchema,
+  reports: reportsSchema,
 } as const;
 
 export type ConfigName = keyof typeof configSchemas;

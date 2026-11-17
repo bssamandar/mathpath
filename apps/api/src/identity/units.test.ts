@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { generateKeyPairSync } from 'node:crypto';
 import { loadConfig } from '@mathpath/config';
 import { describe, expect, it, vi } from 'vitest';
@@ -143,9 +144,10 @@ describe('SMS helpers', () => {
   });
 
   it('prints messages in development', async () => {
+    const log = vi.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
     const sender = new LogSmsSender();
-    const log = vi.spyOn(sender['logger'], 'log').mockImplementation(() => undefined);
     await sender.send('+998901234567', 'hello');
     expect(log).toHaveBeenCalledWith('To +99890*****67: hello');
+    log.mockRestore();
   });
 });

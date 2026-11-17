@@ -137,6 +137,14 @@ groups:
         labels: { severity: warn }
         annotations:
           summary: 'The daily billing reconciliation has not finished for over 26 hours.'
+      - alert: ReportSmsFailing
+        expr: |
+          sum(increase(mathpath_report_sms_total{outcome="failed"}[1h])) > 20
+            and sum(increase(mathpath_report_sms_total{outcome="failed"}[1h]))
+              > 0.2 * sum(increase(mathpath_report_sms_total[1h]))
+        labels: { severity: warn }
+        annotations:
+          summary: "Over a fifth of this evening's report SMS failed. Failed ones are not retried this week; check Eskiz (balance, template approval) and the worker log (weekly-report-sms)."
 
   - name: jobs
     rules:
