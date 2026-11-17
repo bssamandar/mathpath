@@ -118,9 +118,9 @@ Steps are in [backups.md](backups.md).
       the role once in the database (every later role is granted in the
       studio, with 2FA and an audit entry):
       `sh
-  infra/compose.sh exec -u postgres postgres psql -d mathpath -c \
-    "INSERT INTO user_roles (user_id, role) SELECT id, 'admin' FROM users WHERE phone_e164 = '+998XXXXXXXXX'"
-  `
+infra/compose.sh exec -u postgres postgres psql -d mathpath -c \
+  "INSERT INTO user_roles (user_id, role) SELECT id, 'admin' FROM users WHERE phone_e164 = '+998XXXXXXXXX'"
+`
       Then sign in to `studio.DOMAIN` and enrol 2FA; keep the recovery codes
       offline.
 - [ ] Monitoring stack started with its four secrets, the Telegram chat ID,
