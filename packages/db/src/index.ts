@@ -5,6 +5,13 @@ export {
   type HashedFields,
   verifyAuditChain,
 } from './audit-chain';
+export {
+  RECONCILIATION_CHECKS,
+  type ReconciliationCheck,
+  type ReconciliationOptions,
+  type ReconciliationResult,
+  reconcileBilling,
+} from './billing-reconciliation';
 export { createDb, type CreateDbOptions } from './client';
 export { newId } from './ids';
 export {

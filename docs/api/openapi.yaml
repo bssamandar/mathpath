@@ -2213,11 +2213,51 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/Unprocessable' }
 
+  /admin/payments:
+    get:
+      tags: [Admin]
+      operationId: adminSearchPayments
+      summary: A parent's payments by phone number, or one payment by payment, order or owner ID.
+      description: |
+        Newest first, at most 50, each with its refunds. Phone numbers come
+        back masked. The search is audited (`admin.payment_search`).
+        Errors: 400 VALIDATION_FAILED (a name instead of a phone number or ID).
+      x-permission: admin:billing
+      parameters:
+        - { name: q, in: query, required: true, schema: { type: string, minLength: 3, maxLength: 64 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/AdminPayment' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+
   /admin/payments/{paymentId}/refunds:
     post:
       tags: [Admin]
       operationId: adminRefundPayment
-      summary: Refund a payment fully or partially through its provider.
+      summary: Refund a whole payment through its provider.
+      description: |
+        Payme and Click refund whole payments only, so `amountTiyin` must equal
+        the payment's amount (a field kept for providers with partial refunds).
+        Click is reversed at once through its Merchant API: the answer is
+        `succeeded` or `failed` with Click's reason. Payme's Merchant API cannot
+        start a refund: the answer is `requested`, and the refund completes when
+        the transaction is cancelled in the Payme business cabinet and Payme
+        calls CancelTransaction. The subscription ends when the money is
+        returned. Reason and outcome go to the audit log.
+        The Idempotency-Key header is required.
+        Errors: 400 IDEMPOTENCY_KEY_REQUIRED, VALIDATION_FAILED;
+        404 PAYMENT_NOT_FOUND; 409 PAYMENT_NOT_REFUNDABLE, REFUND_IN_PROGRESS,
+        IDEMPOTENCY_KEY_REUSED; 422 PARTIAL_REFUND_UNSUPPORTED,
+        REFUND_UNAVAILABLE (Click without Merchant API access).
       x-permission: admin:billing
       parameters:
         - { name: paymentId, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } }
@@ -2235,16 +2275,14 @@ paths:
                 reason: { type: string, minLength: 5, maxLength: 500 }
       responses:
         '202':
-          description: Refund requested.
+          description: Refund requested, done or refused by the provider.
           content:
             application/json:
-              schema:
-                type: object
-                required: [refundId, status]
-                properties:
-                  refundId: { $ref: '#/components/schemas/Id' }
-                  status: { type: string, enum: [requested, succeeded, failed] }
+              schema: { $ref: '#/components/schemas/Refund' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
 
   /admin/promo-codes:
     get:
@@ -3103,6 +3141,49 @@ components:
         features:
           type: array
           items: { type: string }
+
+    Refund:
+      type: object
+      required: [refundId, paymentId, status, amount, reason, requestedBy, failure, createdAt, completedAt]
+      properties:
+        refundId: { $ref: '#/components/schemas/Id' }
+        paymentId: { $ref: '#/components/schemas/Id' }
+        status: { type: string, enum: [requested, succeeded, failed] }
+        amount: { $ref: '#/components/schemas/Money' }
+        reason: { type: string }
+        requestedBy:
+          type: [string, 'null']
+          format: uuid
+          description: The admin; null when the provider started the refund (Payme cabinet).
+        failure: { type: [string, 'null'], description: The provider's reason when it refused. }
+        createdAt: { type: string, format: date-time }
+        completedAt: { type: [string, 'null'], format: date-time }
+
+    AdminPayment:
+      type: object
+      required:
+        [id, orderId, provider, providerTxnId, amount, status, planCode, owner, createdAt, paidAt, cancelledAt, refunds]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        orderId: { $ref: '#/components/schemas/Id' }
+        provider: { type: string, enum: [payme, click] }
+        providerTxnId: { type: string }
+        amount: { $ref: '#/components/schemas/Money' }
+        status: { type: string, enum: [pending, paid, cancelled, refunded, partially_refunded, failed] }
+        planCode: { type: string }
+        owner:
+          type: object
+          required: [id, firstName, phoneMasked]
+          properties:
+            id: { $ref: '#/components/schemas/Id' }
+            firstName: { type: string }
+            phoneMasked: { type: [string, 'null'] }
+        createdAt: { type: string, format: date-time }
+        paidAt: { type: [string, 'null'], format: date-time }
+        cancelledAt: { type: [string, 'null'], format: date-time }
+        refunds:
+          type: array
+          items: { $ref: '#/components/schemas/Refund' }
 
     PromoCode:
       type: object

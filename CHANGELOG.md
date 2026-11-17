@@ -212,6 +212,19 @@ project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   security-header check. A k6 load test (`tests/load`) of students practising,
   run as a one-minute smoke in CI and at twice the 5k peak against staging by
   hand. Guide: `docs/guides/testing.md`.
+- Refunds: admins find a family's payments in the studio (by phone or ID) and
+  refund a whole payment with a written reason. Click payments are reversed at
+  once through Click's Merchant API (`CLICK_MERCHANT_USER_ID`); Payme refunds are
+  recorded and completed when the transaction is cancelled in the Payme cabinet
+  (`CancelTransaction`), which also records cabinet refunds started at Payme.
+  The subscription ends when the money is returned; requests and outcomes are
+  audited. New `refunds` table, `GET /admin/payments`,
+  `POST /admin/payments/{id}/refunds`.
+- Daily billing reconciliation in the worker (06:00 Tashkent): paid payments
+  without a subscription, order and payment disagreements, amount mismatches,
+  refunds that left a subscription running, refund records out of step, stuck
+  payments and unfinished Payme refund requests, with an alert on any finding.
+  Guide: `docs/guides/payments.md`.
 - Errors are returned as RFC 9457 problem details with a stable `code` and request ID.
 - CI (format, lint, typecheck, tests with an 80% coverage gate, build) and security
   scanning (gitleaks, pnpm audit, OSV-Scanner, Semgrep, CodeQL); Renovate.

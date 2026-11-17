@@ -465,6 +465,41 @@ export class BillingService {
     );
   }
 
+  /**
+   * Records a refund the provider has carried out (Payme's CancelTransaction
+   * after perform): completes the admin's open request for this payment, or
+   * records one the provider started on its own side. Runs in the adapter's
+   * transaction, next to {@link revoke}.
+   */
+  async settleProviderRefund(
+    trx: Transaction<Database>,
+    refund: { paymentId: string; amountTiyin: number; providerRef: string; note: string },
+    at: Date,
+  ): Promise<void> {
+    const settled = await trx
+      .updateTable('refunds')
+      .set({ status: 'succeeded', provider_ref: refund.providerRef, completed_at: at })
+      .where('payment_id', '=', refund.paymentId)
+      .where('status', '=', 'requested')
+      .returning('id')
+      .executeTakeFirst();
+    if (settled) return;
+    await trx
+      .insertInto('refunds')
+      .values({
+        id: newId(),
+        payment_id: refund.paymentId,
+        amount_tiyin: refund.amountTiyin,
+        status: 'succeeded',
+        reason: refund.note,
+        requested_by: null,
+        provider_ref: refund.providerRef,
+        created_at: at,
+        completed_at: at,
+      })
+      .execute();
+  }
+
   private checkoutView(
     order: {
       id: string;

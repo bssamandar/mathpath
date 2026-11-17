@@ -14,6 +14,7 @@ import type { Env } from '../config/env';
 import { BUSINESS_RULES, ENV } from '../config/tokens';
 import { DB } from '../database/database.module';
 import {
+  AdminPaymentsController,
   AdminPromoController,
   BillingController,
   PaymentCallbacksController,
@@ -23,9 +24,16 @@ import { PAYMENT_PROVIDERS as PROVIDERS, type PaymentProvider } from './payment-
 import { ClickProvider } from './click/click';
 import { PaymeProvider } from './payme/payme';
 import { PromoService } from './promo.service';
+import { ClickMerchantApi } from './click/merchant-api';
+import { RefundService } from './refund.service';
 
 @Module({
-  controllers: [BillingController, AdminPromoController, PaymentCallbacksController],
+  controllers: [
+    BillingController,
+    AdminPromoController,
+    AdminPaymentsController,
+    PaymentCallbacksController,
+  ],
   providers: [
     // Filled by each adapter's factory below; read at request time.
     { provide: PROVIDERS, useFactory: () => new Map<string, PaymentProvider>() },
@@ -60,6 +68,30 @@ import { PromoService } from './promo.service';
         env: Env,
         promo: PromoService,
       ) => new BillingService(db, audit, clock, rules.billing, providers, env.CORS_ORIGINS, promo),
+    },
+    {
+      provide: RefundService,
+      inject: [DB, AuditService, Clock, BillingService, ENV],
+      useFactory: (
+        db: Kysely<Database>,
+        audit: AuditService,
+        clock: Clock,
+        billing: BillingService,
+        env: Env,
+      ) => {
+        // Click reversals need the Merchant API user; without it the admin
+        // reverses Click payments in the Click cabinet.
+        const click =
+          env.CLICK_MERCHANT_USER_ID && env.CLICK_SERVICE_ID && env.CLICK_SECRET_KEY
+            ? new ClickMerchantApi({
+                apiUrl: env.CLICK_MERCHANT_API_URL,
+                serviceId: env.CLICK_SERVICE_ID,
+                merchantUserId: env.CLICK_MERCHANT_USER_ID,
+                secretKey: env.CLICK_SECRET_KEY,
+              })
+            : null;
+        return new RefundService(db, audit, clock, billing, click);
+      },
     },
     {
       provide: PaymeProvider,

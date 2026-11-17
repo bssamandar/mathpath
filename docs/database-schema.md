@@ -617,8 +617,12 @@ children covered.
 | cancel_reason | text NULL | |
 
 **refunds**: `id`, `payment_id` FK, `amount_tiyin`, `status`
-(`requested`,`succeeded`,`failed`), `reason`, `requested_by` (admin),
-`provider_ref`, `created_at`.
+(`requested`,`succeeded`,`failed`), `reason`, `requested_by` (admin; NULL when
+the provider started the refund, such as a Payme cabinet cancel),
+`idempotency_key` UQ NULL, `provider_ref`, `failure` (set exactly when failed),
+`created_at`, `completed_at` (NULL exactly while requested). At most one
+requested or succeeded refund per payment (partial unique index): the providers
+refund whole payments only.
 
 **payment_callbacks**: a raw log of every provider call.
 | Column | Type | Notes |

@@ -1,11 +1,18 @@
 import 'reflect-metadata';
 import type { AppConfig } from '@mathpath/config';
-import { closeFinishedLeagues, createDb, verifyAuditChain } from '@mathpath/db';
+import {
+  closeFinishedLeagues,
+  createDb,
+  RECONCILIATION_CHECKS,
+  reconcileBilling,
+  verifyAuditChain,
+} from '@mathpath/db';
 import { objectStoreFromEnv, vaultFromEnv } from '@mathpath/media';
 import { createMetrics, JsonLogger, startMetricsServer } from '@mathpath/observability';
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { startAuditCheck } from './audit/check-job';
+import { startReconciliation } from './billing/reconcile-job';
 import { parseWorkerEnv } from './env';
 import { startLeagueClose } from './leagues/close-job';
 import { startTranscodeConsumer } from './transcode/consumer';
@@ -57,6 +64,19 @@ async function bootstrap(): Promise<void> {
     { redisUrl: env.REDIS_URL },
   );
 
+  const billing = await startReconciliation(
+    () => reconcileBilling(db, new Date()),
+    {
+      onResult: (result) => {
+        for (const check of RECONCILIATION_CHECKS) {
+          metrics.billingMismatches.set({ check }, result.counts[check]);
+        }
+        succeeded('billing_reconciliation');
+      },
+    },
+    { redisUrl: env.REDIS_URL },
+  );
+
   const server =
     env.WORKER_METRICS_PORT > 0
       ? await startMetricsServer(metrics.registry, { port: env.WORKER_METRICS_PORT })
@@ -67,6 +87,7 @@ async function bootstrap(): Promise<void> {
     await consumer.close();
     await leagues.stop();
     await audit.stop();
+    await billing.stop();
     server?.close();
     await db.destroy();
     await app.close();
@@ -74,7 +95,7 @@ async function bootstrap(): Promise<void> {
   process.once('SIGTERM', () => void stop());
   process.once('SIGINT', () => void stop());
   logger.log(
-    `Worker started: ${consumer.name} (concurrency ${env.TRANSCODE_CONCURRENCY}), ${leagues.worker.name}, ${audit.worker.name}.`,
+    `Worker started: ${consumer.name} (concurrency ${env.TRANSCODE_CONCURRENCY}), ${leagues.worker.name}, ${audit.worker.name}, ${billing.worker.name}.`,
   );
 }
 

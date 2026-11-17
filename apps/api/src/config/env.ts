@@ -95,6 +95,12 @@ const envSchema = z
     ),
     CLICK_SECRET_KEY: optionalSecret(z.string().min(8)),
     CLICK_CHECKOUT_URL: z.url().default('https://my.click.uz/services/pay'),
+    // Click Merchant API, for refunds (reversals): the merchant user ID from the
+    // Click cabinet. Without it, Click refunds are done in the cabinet by hand.
+    CLICK_MERCHANT_USER_ID: optionalSecret(
+      z.string().regex(/^\d{1,10}$/, 'expected a numeric merchant user ID'),
+    ),
+    CLICK_MERCHANT_API_URL: z.url().default('https://api.click.uz/v2/merchant'),
   })
   // Storage and the media key secret, shared with the worker.
   .extend(mediaEnvSchema.shape)

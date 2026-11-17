@@ -54,6 +54,7 @@ const expectedTables: TableName[] = [
   'payment_callbacks',
   'promo_codes',
   'promo_redemptions',
+  'refunds',
   'trials',
   'xp_ledger',
   'user_stats',

@@ -41,20 +41,21 @@ in the alert rules exists in `packages/observability/src/metrics.ts`.
 Severity `page` goes to Telegram and email; `warn` to email; `info` to Telegram
 without sound. Thresholds are starting values; tune them after launch.
 
-| Alert                                                         | First step                                                                                                                                     |
-| ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| ApiDown, WorkerDown, PostgresDown, RedisDown, SiteUnreachable | `docker compose ps` and the service logs in Grafana (Loki: `{service="api"}`)                                                                  |
-| HighErrorRate, SlowResponses                                  | Grafana: "Slowest routes" and the error log panel; search Loki by `requestId` from a user's report                                             |
-| AuthErrorSpike, RateLimitSpike, LoginFailureSpike             | Studio → Audit log, action `auth`; check the risk queue; block an abusive phone prefix if needed                                               |
-| RefreshTokenReused                                            | A stolen or replayed session was revoked automatically. Audit log, action `auth.refresh_token_reused`; contact the account owner if it repeats |
-| StaffRoleGranted                                              | Confirm in Studio → Audit log (`user.role.grant`) that you or another admin did it                                                             |
-| AuditChainBroken                                              | Treat as a security incident: someone changed or deleted audit entries. Do not restart anything; copy the database and the audit backups first |
-| SmsSpendHourly, SmsSpendDaily                                 | Look for SMS pumping (RateLimitSpike, risk queue). At 100% the API already asks every code request for a CAPTCHA                               |
-| BackupMissing, MediaBackupMissing                             | `journalctl -u mathpath-backup.service`; run `infra/backup/backup.sh` by hand (backups.md)                                                     |
-| RestoreDrillMissing, RestoreDrillSlow                         | `journalctl -u mathpath-restore-drill.service`; run `infra/backup/restore-drill-run.sh` (backups.md)                                           |
-| WafBlockSpike                                                 | Proxy logs in Grafana (`{service="proxy"}`) : an attack, or a CRS false positive blocking users (deploy.md, edge rules)                        |
-| CertificateExpiresSoon                                        | Caddy renews automatically; if it did not, check its logs and DNS                                                                              |
-| AuditCheckNotRunning, LeagueCloseNotRunning, TranscodeErrors  | Worker logs (`{service="worker"}`); the jobs are safe to run again                                                                             |
+| Alert                                                                                         | First step                                                                                                                                     |
+| --------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| ApiDown, WorkerDown, PostgresDown, RedisDown, SiteUnreachable                                 | `docker compose ps` and the service logs in Grafana (Loki: `{service="api"}`)                                                                  |
+| HighErrorRate, SlowResponses                                                                  | Grafana: "Slowest routes" and the error log panel; search Loki by `requestId` from a user's report                                             |
+| AuthErrorSpike, RateLimitSpike, LoginFailureSpike                                             | Studio → Audit log, action `auth`; check the risk queue; block an abusive phone prefix if needed                                               |
+| RefreshTokenReused                                                                            | A stolen or replayed session was revoked automatically. Audit log, action `auth.refresh_token_reused`; contact the account owner if it repeats |
+| StaffRoleGranted                                                                              | Confirm in Studio → Audit log (`user.role.grant`) that you or another admin did it                                                             |
+| AuditChainBroken                                                                              | Treat as a security incident: someone changed or deleted audit entries. Do not restart anything; copy the database and the audit backups first |
+| SmsSpendHourly, SmsSpendDaily                                                                 | Look for SMS pumping (RateLimitSpike, risk queue). At 100% the API already asks every code request for a CAPTCHA                               |
+| BillingReconciliationMismatch                                                                 | Worker log (`{service="worker"}                                                                                                                | = "billing-reconciliation"`) lists the first IDs per check; what each check means and what to do: payments.md |
+| BackupMissing, MediaBackupMissing                                                             | `journalctl -u mathpath-backup.service`; run `infra/backup/backup.sh` by hand (backups.md)                                                     |
+| RestoreDrillMissing, RestoreDrillSlow                                                         | `journalctl -u mathpath-restore-drill.service`; run `infra/backup/restore-drill-run.sh` (backups.md)                                           |
+| WafBlockSpike                                                                                 | Proxy logs in Grafana (`{service="proxy"}`) : an attack, or a CRS false positive blocking users (deploy.md, edge rules)                        |
+| CertificateExpiresSoon                                                                        | Caddy renews automatically; if it did not, check its logs and DNS                                                                              |
+| AuditCheckNotRunning, LeagueCloseNotRunning, BillingReconciliationNotRunning, TranscodeErrors | Worker logs (`{service="worker"}`); the jobs are safe to run again                                                                             |
 
 ## Logs
 
