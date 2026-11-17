@@ -204,6 +204,14 @@ project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   continuous WAL archiving, nightly encrypted backups, a media sync and a monthly
   automated restore drill, with alerts. Guides: `docs/guides/deploy.md`,
   `docs/guides/backups.md`.
+- End-to-end tests (`tests/e2e`, Playwright): the family journey on a phone
+  (parent sign-up, adding a child with SMS-confirmed consent, the child's
+  family-code sign-in and a practice answer, wrong and right passwords) and the
+  studio admin journey (2FA enrolment, locking an account with a reason, the
+  audit log), with an axe WCAG 2.1 AA check on every screen visited and a
+  security-header check. A k6 load test (`tests/load`) of students practising,
+  run as a one-minute smoke in CI and at twice the 5k peak against staging by
+  hand. Guide: `docs/guides/testing.md`.
 - Errors are returned as RFC 9457 problem details with a stable `code` and request ID.
 - CI (format, lint, typecheck, tests with an 80% coverage gate, build) and security
   scanning (gitleaks, pnpm audit, OSV-Scanner, Semgrep, CodeQL); Renovate.
