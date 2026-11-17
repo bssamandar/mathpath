@@ -1,0 +1,62 @@
+# Peak load test against staging, started by hand (security plan C-36;
+# docs/guides/testing.md). Never point it at production: it signs in fake
+# students and starts practice attempts.
+#
+# Before a run: prepare the students on staging (tests/load/prepare-students.sql),
+# raise EDGE_RATE_LIMIT_PER_MINUTE there (all traffic comes from this one
+# runner's IP), and store the template child's PIN as the secret LOAD_TEST_PIN.
+name: Load test
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: Staging address, e.g. https://staging.example.uz
+        required: true
+      family_code:
+        description: Family code of the load-test students
+        required: true
+      students:
+        description: Students at the top of the ramp (twice the 5k peak)
+        default: '10000'
+      profile:
+        description: peak or smoke
+        default: peak
+
+permissions:
+  contents: read
+
+jobs:
+  load:
+    name: Load (${{ inputs.profile }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Refuse production
+        env:
+          BASE_URL: ${{ inputs.base_url }}
+          PRODUCTION_URL: ${{ vars.PRODUCTION_URL }}
+        run: |
+          if [ -n "$PRODUCTION_URL" ] && [ "${BASE_URL%/}" = "${PRODUCTION_URL%/}" ]; then
+            echo "base_url is production; run this against staging only" >&2
+            exit 1
+          fi
+      - name: Run k6
+        env:
+          BASE_URL: ${{ inputs.base_url }}
+          FAMILY_CODE: ${{ inputs.family_code }}
+          STUDENTS: ${{ inputs.students }}
+          PROFILE: ${{ inputs.profile }}
+          PIN: ${{ secrets.LOAD_TEST_PIN }}
+        run: |
+          docker run --rm --user "$(id -u)" -v "$PWD/tests/load:/load:ro" -v "$PWD:/out" \
+            -e BASE_URL -e FAMILY_CODE -e STUDENTS -e PROFILE -e PIN \
+            grafana/k6:2.3.0@sha256:2dd4756ec6e14e62778916e1eb850108e4b499304c02df56760fa0bdb0fba0b8 \
+            run --summary-export /out/summary.json /load/student-journey.js
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: load-summary
+          path: summary.json
+          retention-days: 30

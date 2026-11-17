@@ -1,0 +1,894 @@
+/* Design tokens from docs/ux/ux-design.md §9; final colours come from the brand work. */
+:root {
+  --color-primary: #4f46e5;
+  --color-primary-text: #ffffff;
+  --color-success: #15803d;
+  --color-attention: #b45309;
+  --color-danger: #b91c1c;
+  --color-surface: #ffffff;
+  --color-muted-surface: #f3f4f6;
+  --color-text: #111827;
+  --color-muted-text: #4b5563;
+  --color-border: #9ca3af;
+  --font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-size-body: 16px;
+  --radius: 12px;
+  --space: 4px;
+  --target-min: 48px;
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-primary: #a5b4fc;
+    --color-primary-text: #111827;
+    --color-attention: #fbbf24;
+    --color-danger: #fca5a5;
+    --color-surface: #111827;
+    --color-muted-surface: #1f2937;
+    --color-text: #f9fafb;
+    --color-muted-text: #d1d5db;
+    --color-border: #6b7280;
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-family: var(--font-family);
+  font-size: var(--font-size-body);
+  line-height: 1.5;
+}
+
+/* One column, about 60 characters wide; works at 320 px and 200% zoom (UX §7). */
+.screen {
+  max-width: 34rem;
+  margin: 0 auto;
+  padding: calc(var(--space) * 4);
+}
+
+h1 {
+  font-size: 1.6rem;
+  line-height: 1.25;
+  margin: calc(var(--space) * 6) 0 calc(var(--space) * 4);
+}
+
+.lead {
+  color: var(--color-muted-text);
+  font-size: 1.1rem;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--space) * 4);
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: calc(var(--space) * 2);
+}
+
+.languages {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(var(--space) * 2);
+}
+
+.pill {
+  min-height: 40px;
+  padding: 0 calc(var(--space) * 4);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.pill[aria-pressed='true'] {
+  border-color: var(--color-primary);
+  background: var(--color-primary);
+  color: var(--color-primary-text);
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--target-min);
+  padding: calc(var(--space) * 2) calc(var(--space) * 5);
+  border: 2px solid var(--color-primary);
+  border-radius: var(--radius);
+  font: inherit;
+  font-weight: 600;
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.button.primary {
+  background: var(--color-primary);
+  color: var(--color-primary-text);
+}
+
+.button.secondary {
+  background: transparent;
+  color: var(--color-primary);
+}
+
+.button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.text-link {
+  align-self: flex-start;
+  min-height: var(--target-min);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-primary);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.text-link:disabled {
+  color: var(--color-muted-text);
+  text-decoration: none;
+  cursor: default;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space);
+}
+
+.field label {
+  font-weight: 600;
+}
+
+.field input,
+.prefixed {
+  min-height: var(--target-min);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+}
+
+.field input {
+  padding: 0 calc(var(--space) * 3);
+}
+
+.prefixed {
+  display: flex;
+  align-items: center;
+  padding-left: calc(var(--space) * 3);
+}
+
+.prefixed input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+}
+
+.field input.code {
+  font-size: 1.5rem;
+  letter-spacing: 0.5em;
+  text-align: center;
+}
+
+.hint {
+  margin: 0;
+  color: var(--color-muted-text);
+  font-size: 0.9rem;
+}
+
+.check {
+  display: flex;
+  gap: calc(var(--space) * 3);
+  align-items: flex-start;
+  min-height: var(--target-min);
+}
+
+.check input {
+  width: 24px;
+  height: 24px;
+  margin-top: 2px;
+}
+
+.error {
+  min-height: 1.5em;
+  margin: 0;
+  color: var(--color-danger);
+}
+
+.error:empty {
+  min-height: 0;
+}
+
+.captcha {
+  padding: calc(var(--space) * 3);
+  border-radius: var(--radius);
+  background: var(--color-muted-surface);
+}
+
+/* Students get 18 px text (UX §2). */
+.child {
+  font-size: 18px;
+}
+
+:focus-visible {
+  outline: 3px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* Course lists and the lesson player (UX S3–S5) */
+h2 {
+  font-size: 1.15rem;
+  margin: calc(var(--space) * 6) 0 calc(var(--space) * 2);
+}
+.list-section {
+  margin-bottom: calc(var(--space) * 4);
+}
+.cards {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--space) * 2);
+}
+.card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: calc(var(--space) * 2);
+  min-height: var(--target-min);
+  padding: calc(var(--space) * 3) calc(var(--space) * 4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  color: var(--color-text);
+  text-decoration: none;
+}
+a.card:hover {
+  border-color: var(--color-primary);
+}
+.card.locked {
+  color: var(--color-muted-text);
+  background: var(--color-muted-surface);
+}
+.tag {
+  font-size: 0.85rem;
+  color: var(--color-muted-text);
+  white-space: nowrap;
+}
+.stepper {
+  display: flex;
+  gap: var(--space);
+  list-style: none;
+  padding: 0;
+  margin: calc(var(--space) * 4) 0 var(--space);
+}
+.stepper li {
+  flex: 1;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--color-muted-surface);
+  border: 1px solid var(--color-border);
+}
+.stepper li.done {
+  background: var(--color-success);
+  border-color: var(--color-success);
+}
+.stepper li.current {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+}
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+.video-frame {
+  position: relative;
+  background: #000;
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.video-frame video {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+}
+.watermark {
+  position: absolute;
+  pointer-events: none;
+  user-select: none;
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-shadow: 0 0 2px rgba(0, 0, 0, 0.6);
+  transition:
+    left 1s ease,
+    top 1s ease;
+}
+.video-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(var(--space) * 4);
+  margin-top: calc(var(--space) * 3);
+}
+.video-controls label {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--space) * 2);
+}
+.video-controls select {
+  min-height: 40px;
+  font: inherit;
+  color: inherit;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 0 calc(var(--space) * 2);
+}
+.video-error {
+  margin-top: calc(var(--space) * 3);
+  color: var(--color-danger);
+}
+.step-placeholder,
+section.done {
+  padding: calc(var(--space) * 4);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius);
+}
+.lesson-nav {
+  justify-content: space-between;
+  margin: calc(var(--space) * 6) 0 calc(var(--space) * 10);
+}
+
+/* Question screen, practice and mastery test (UX S5, S6). */
+.question,
+.practice-intro {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--space) * 4);
+}
+.question-head {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--space) * 3);
+  color: var(--color-muted-text);
+  font-size: 0.9rem;
+}
+.question-head progress,
+.practice-intro progress {
+  flex: 1;
+  width: 100%;
+  height: 8px;
+  accent-color: var(--color-primary);
+}
+.math-text {
+  max-width: 60ch;
+  font-size: 1.125rem;
+  line-height: 1.6;
+}
+.math-text .katex {
+  font-size: 1.15em;
+}
+.choices {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--space) * 2);
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+.choice {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--space) * 3);
+  min-height: var(--target-min);
+  padding: calc(var(--space) * 2) calc(var(--space) * 4);
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+.choice.picked {
+  border-color: var(--color-primary);
+  background: var(--color-muted-surface);
+}
+.choice input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+}
+.choice:focus-within {
+  outline: 3px solid var(--color-primary);
+  outline-offset: 2px;
+}
+.letter {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid var(--color-border);
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.choice.picked .letter {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: var(--color-primary-text);
+}
+.number-answer {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--space) * 3);
+  max-width: 360px;
+}
+.answer-input {
+  min-height: 56px;
+  padding: 0 calc(var(--space) * 4);
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius);
+  font: inherit;
+  font-size: 1.5rem;
+  text-align: center;
+}
+.pad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: calc(var(--space) * 2);
+}
+.pad-key {
+  min-height: var(--target-min);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 1.25rem;
+  cursor: pointer;
+}
+.pad-key:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.feedback {
+  padding: calc(var(--space) * 4);
+  border-radius: var(--radius);
+  border-left: 6px solid var(--color-border);
+  background: var(--color-muted-surface);
+}
+.feedback p {
+  margin: 0 0 calc(var(--space) * 2);
+}
+.feedback.success {
+  border-left-color: var(--color-success);
+}
+.feedback.attention {
+  border-left-color: var(--color-attention);
+}
+.feedback.neutral {
+  border-left-color: var(--color-primary);
+}
+.feedback-title {
+  font-weight: 700;
+}
+.mastery-result {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: calc(var(--space) * 4);
+  margin-bottom: calc(var(--space) * 4);
+}
+.score-circle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 140px;
+  height: 140px;
+  border-radius: 50%;
+  border: 10px solid var(--color-attention);
+}
+.score-circle.passed {
+  border-color: var(--color-success);
+}
+.score-value {
+  font-size: 2rem;
+  font-weight: 700;
+}
+.review {
+  align-self: stretch;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--space) * 2);
+}
+.review li {
+  padding: calc(var(--space) * 2) calc(var(--space) * 4);
+  border: 1px solid var(--color-border);
+  border-left: 6px solid var(--color-success);
+  border-radius: var(--radius);
+}
+.review li.wrong {
+  border-left-color: var(--color-attention);
+}
+.review summary {
+  min-height: var(--target-min);
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+/* Gap router next step, due reviews and topic badges (UX F5, S3). */
+.next-card {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--space) * 3);
+  padding: calc(var(--space) * 4);
+  border: 2px solid var(--color-primary);
+  border-radius: var(--radius);
+  background: var(--color-muted-surface);
+}
+.next-card p {
+  margin: 0;
+}
+.tag.needs_review {
+  color: var(--color-attention);
+  font-weight: 700;
+}
+
+/* Plans, checkout and the plan page (UX F7, F8, S12). */
+.plans {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 calc(var(--space) * 4);
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--space) * 3);
+}
+.plan-card {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--space) * 2);
+  padding: calc(var(--space) * 4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+.plan-card.selected {
+  border: 2px solid var(--color-primary);
+}
+.plan-card h2,
+.plan-card p {
+  margin: 0;
+}
+.price {
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin: 0;
+}
+.features {
+  margin: 0;
+  padding-left: calc(var(--space) * 5);
+}
+.tag.saving {
+  color: var(--color-success);
+  font-weight: 700;
+}
+.tag.status-active,
+.tag.status-trialing {
+  color: var(--color-success);
+  font-weight: 700;
+}
+.choices-group {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--space) * 2);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.choices-group legend {
+  font-weight: 600;
+  margin-bottom: calc(var(--space) * 2);
+}
+.promo summary {
+  min-height: var(--target-min);
+  display: flex;
+  align-items: center;
+  color: var(--color-primary);
+  cursor: pointer;
+}
+.promo-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: calc(var(--space) * 2);
+}
+.promo-row .field {
+  flex: 1;
+  min-width: 12rem;
+}
+.payment-state {
+  font-size: 1.1rem;
+}
+.payment-state.paid {
+  color: var(--color-success);
+  font-weight: 700;
+}
+
+/* ── Gamification (UX S3, S5, S6) ── */
+.reward {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(var(--space) * 2);
+  align-items: center;
+  margin-top: calc(var(--space) * 2);
+}
+.xp-chip {
+  display: inline-block;
+  padding: var(--space) calc(var(--space) * 3);
+  border-radius: 999px;
+  background: var(--color-primary);
+  color: var(--color-primary-text);
+  font-weight: 700;
+}
+.reward-item {
+  font-weight: 600;
+}
+.progress-card {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: calc(var(--space) * 4);
+  margin-bottom: calc(var(--space) * 6);
+  background: var(--color-surface);
+}
+.progress-card h3 {
+  font-size: 1rem;
+  margin: calc(var(--space) * 4) 0 calc(var(--space) * 2);
+}
+.progress-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: calc(var(--space) * 3);
+}
+.progress-card .level {
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin: 0;
+}
+.progress-card .hint {
+  margin: var(--space) 0;
+}
+.streak-count {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--color-muted-text);
+}
+.streak.active .streak-count {
+  color: var(--color-attention);
+}
+.bar {
+  height: 10px;
+  border-radius: 999px;
+  background: var(--color-muted-surface);
+  overflow: hidden;
+  margin: calc(var(--space) * 2) 0;
+}
+.bar.small {
+  height: 6px;
+  margin: var(--space) 0 0;
+  flex-basis: 100%;
+}
+.bar > span {
+  display: block;
+  height: 100%;
+  background: var(--color-primary);
+}
+.quests {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: calc(var(--space) * 3);
+}
+.quests li {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--space);
+}
+.quests li.done .bar > span {
+  background: var(--color-success);
+}
+.badges {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(var(--space) * 2);
+}
+.badge {
+  padding: var(--space) calc(var(--space) * 3);
+  border-radius: 999px;
+  background: var(--color-muted-surface);
+  font-size: 0.875rem;
+}
+
+/* ── League (UX S8): zones in neutral colours, the learner highlighted ── */
+.league-head h2 {
+  margin-bottom: var(--space);
+}
+.standings {
+  list-style: none;
+  padding: 0;
+  margin: calc(var(--space) * 4) 0;
+  display: grid;
+  gap: calc(var(--space) * 2);
+}
+.standings li {
+  display: grid;
+  grid-template-columns: 2rem 2.5rem 1fr auto;
+  align-items: center;
+  gap: calc(var(--space) * 2);
+  min-height: var(--target-min);
+  padding: calc(var(--space) * 2) calc(var(--space) * 3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+}
+.standings li.zone-up {
+  border-left: 4px solid var(--color-primary);
+}
+.standings li.zone-down {
+  border-left: 4px solid var(--color-muted-text);
+}
+.standings li.me {
+  background: var(--color-muted-surface);
+  font-weight: 700;
+  outline: 2px solid var(--color-primary);
+}
+.standings .rank {
+  font-weight: 700;
+  text-align: center;
+}
+.standings .avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 50%;
+  background: var(--color-primary);
+  color: var(--color-primary-text);
+  font-weight: 700;
+}
+.standings .name {
+  overflow-wrap: anywhere;
+}
+.standings .xp {
+  font-variant-numeric: tabular-nums;
+}
+.progress-card .button {
+  margin-top: calc(var(--space) * 4);
+}
+
+/* ── Parent: children overview and weekly report (UX S10, S11) ── */
+.child-card {
+  display: grid;
+  gap: var(--space);
+}
+.child-name {
+  font-weight: 700;
+  font-size: 1.125rem;
+}
+.trend {
+  color: var(--color-muted-text);
+}
+.alert-line {
+  color: var(--color-attention);
+  font-weight: 600;
+}
+.link-text {
+  color: var(--color-primary);
+  font-weight: 600;
+}
+.week-nav {
+  justify-content: space-between;
+}
+.report-section {
+  margin: calc(var(--space) * 6) 0;
+}
+.report-section h3 {
+  font-size: 1.0625rem;
+  margin-bottom: calc(var(--space) * 2);
+}
+.day-bars {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: calc(var(--space) * 2);
+  height: 160px;
+  align-items: end;
+}
+.day-bar {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  height: 100%;
+  gap: var(--space);
+}
+.bar-fill {
+  width: 100%;
+  max-height: calc(100% - 3rem);
+  border-radius: 6px 6px 0 0;
+  background: var(--color-primary);
+}
+.bar-value,
+.bar-label {
+  font-size: 0.8125rem;
+  color: var(--color-muted-text);
+}
+.plain-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: calc(var(--space) * 3);
+}
+.concerns li {
+  display: grid;
+  gap: var(--space);
+  padding-left: calc(var(--space) * 3);
+  border-left: 4px solid var(--color-attention);
+}
+.consents {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: calc(var(--space) * 3);
+  display: grid;
+  gap: calc(var(--space) * 3);
+}
+.field select {
+  min-height: var(--target-min);
+  font: inherit;
+  padding: 0 calc(var(--space) * 3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+}

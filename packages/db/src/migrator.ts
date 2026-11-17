@@ -1,6 +1,19 @@
 import { type Kysely, type Migration, type MigrationResultSet, Migrator } from 'kysely';
 import * as m2026111501 from './migrations/2026111501_identity';
 import * as m2026111502 from './migrations/2026111502_terms_acceptance';
+import * as m2026111601 from './migrations/2026111601_content';
+import * as m2026111602 from './migrations/2026111602_media';
+import * as m2026111603 from './migrations/2026111603_questions';
+import * as m2026111701 from './migrations/2026111701_assessment';
+import * as m2026111702 from './migrations/2026111702_learning';
+import * as m2026111801 from './migrations/2026111801_billing';
+import * as m2026111802 from './migrations/2026111802_payment_refs';
+import * as m2026111803 from './migrations/2026111803_promo_trials';
+import * as m2026111901 from './migrations/2026111901_gamification';
+import * as m2026111902 from './migrations/2026111902_leagues';
+import * as m2026112001 from './migrations/2026112001_admin';
+import * as m2026112101 from './migrations/2026112101_refunds';
+import * as m2026112201 from './migrations/2026112201_report_sms';
 
 /**
  * The ordered list of migrations. Names sort chronologically; each module
@@ -12,6 +25,19 @@ import * as m2026111502 from './migrations/2026111502_terms_acceptance';
 export const migrations: Record<string, Migration> = {
   '2026111501_identity': m2026111501,
   '2026111502_terms_acceptance': m2026111502,
+  '2026111601_content': m2026111601,
+  '2026111602_media': m2026111602,
+  '2026111603_questions': m2026111603,
+  '2026111701_assessment': m2026111701,
+  '2026111702_learning': m2026111702,
+  '2026111801_billing': m2026111801,
+  '2026111802_payment_refs': m2026111802,
+  '2026111803_promo_trials': m2026111803,
+  '2026111901_gamification': m2026111901,
+  '2026111902_leagues': m2026111902,
+  '2026112001_admin': m2026112001,
+  '2026112101_refunds': m2026112101,
+  '2026112201_report_sms': m2026112201,
 };
 
 function migratorFor(db: Kysely<unknown>, list: Record<string, Migration>): Migrator {

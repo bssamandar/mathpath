@@ -1,0 +1,11 @@
+# Monthly restore drill (infra/backup/restore-drill-run.sh).
+[Unit]
+Description=MathPath monthly restore drill
+Wants=network-online.target docker.service
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/mathpath/infra/backup/restore-drill-run.sh
+TimeoutStartSec=6h
+Nice=10

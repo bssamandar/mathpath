@@ -1,0 +1,14 @@
+# Nightly database and media backup (infra/backup/backup.sh).
+# Install: docs/guides/backups.md. Assumes the checkout is at /opt/mathpath.
+[Unit]
+Description=MathPath nightly backup
+Wants=network-online.target docker.service
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/mathpath/infra/backup/backup.sh full
+TimeoutStartSec=4h
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7

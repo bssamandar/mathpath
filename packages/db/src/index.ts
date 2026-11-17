@@ -1,5 +1,28 @@
+export {
+  canonicalJson,
+  type ChainCheck,
+  entryHash,
+  type HashedFields,
+  verifyAuditChain,
+} from './audit-chain';
+export {
+  RECONCILIATION_CHECKS,
+  type ReconciliationCheck,
+  type ReconciliationOptions,
+  type ReconciliationResult,
+  reconcileBilling,
+} from './billing-reconciliation';
 export { createDb, type CreateDbOptions } from './client';
 export { newId } from './ids';
+export {
+  closeFinishedLeagues,
+  gradeBand,
+  type LeagueRules,
+  leagueOutcome,
+  leagueWeekEnd,
+  leagueWeekOf,
+  leagueZones,
+} from './leagues';
 export {
   MigrationError,
   migrateDown,
@@ -8,4 +31,14 @@ export {
   migrations,
 } from './migrator';
 export * from './schema';
+export {
+  claimReportSms,
+  finishReportSms,
+  type RecipientQuery,
+  type ReportAudience,
+  type ReportChild,
+  type ReportRecipient,
+  weeklyReportRecipients,
+} from './weekly-report';
 export { createTestDb } from './testing';
+export { DEMO_IDS, seedDemoContent } from './seeds/demo-content';

@@ -1,0 +1,10 @@
+[Unit]
+Description=MathPath nightly backup at 02:00 Tashkent time
+
+[Timer]
+OnCalendar=*-*-* 02:00:00 Asia/Tashkent
+RandomizedDelaySec=10m
+Persistent=true
+
+[Install]
+WantedBy=timers.target

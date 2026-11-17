@@ -11,4 +11,12 @@ rateLimits:
   # Login failures (C-04).
   loginFailuresPerAccount: { limit: 5, windowMinutes: 15 }
   loginFailuresPerIpPrefix: { limit: 30, windowMinutes: 15 }
+  # Wrong PINs per child profile; then the profile locks and the parent gets an SMS.
   childPinFailures: { limit: 5, windowMinutes: 30 }
+  # Failed child sign-ins per family code (wrong nickname or PIN), against guessing across profiles.
+  childLoginFailuresPerFamily: { limit: 15, windowMinutes: 30 }
+  # After this many failures the account is locked for the rest of the window
+  # and the owner gets an SMS (C-04).
+  accountLock: { limit: 10, windowMinutes: 60 }
+  # Promo code checks per parent (validate and checkout with a code), against guessing codes.
+  promoChecksPerUser: { limit: 10, windowMinutes: 10 }

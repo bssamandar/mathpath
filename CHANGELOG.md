@@ -30,8 +30,213 @@ project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `x-permission` values in sync (C-09).
 - Audit log with a SHA-256 hash chain for sign-up, sign-in, failed sign-in,
   logout and refresh-token reuse, plus `verifyAuditChain` to detect edits (C-33).
+- Risk scoring for code requests and sign-in (security plan §6.2): flagged
+  phone prefixes, automated clients, per-network code velocity, recent failures
+  and new networks; actions from config (allow, Turnstile CAPTCHA, interactive
+  CAPTCHA, block with a manual review); every decision stored as a `risk_event`.
+- SMS spend guard with hourly and daily caps in Tashkent time; at the cap every
+  code request needs a CAPTCHA (C-20). Account lock after 10 failures in an hour,
+  with an SMS to the owner (C-04).
+- Redis-backed rate limiter, counters and revoked-session list (Lua scripts,
+  atomic across instances); Eskiz.uz SMS sender; Cloudflare Turnstile verifier.
+- Children and family (`apps/api` family module): parents add a child with
+  consent confirmed by a `confirm_action` SMS code to their own phone; consent
+  history is kept, never edited; nicknames are unique per family; trivial PINs
+  are refused. Children sign in with family code, nickname and PIN; wrong PINs
+  lock the profile and notify the parent; failures per family code are limited.
+  Parents can switch to a child profile (linked session). A student keeps at
+  most two live sessions (C-24).
+- Staff 2FA (C-08): TOTP enrolment and verification (`/auth/mfa/totp`,
+  `/auth/mfa/verify`) with secrets encrypted at rest, replay protection per time
+  step, ten one-time recovery codes and a per-user limit on wrong codes. Staff
+  sessions end after 8 hours, or 30 minutes idle (`config/auth.yaml`).
+- Web app sign-in screens (`apps/web`): welcome with language choice, parent
+  sign-up (phone, SMS code, name and password), parent sign-in, student sign-in
+  with family code and PIN, and placeholder home pages. Texts in Uzbek, Russian
+  and English. Turnstile appears when the API asks for a CAPTCHA. Tokens stay
+  in HttpOnly cookies; refreshes are serialised across tabs (Web Locks). A
+  per-request CSP nonce is set in middleware.
+- Content (`apps/api` content module, migration `2026111601_content`): tracks,
+  courses, chapters, topics and versioned lessons with a draft → review →
+  publish workflow (four-eyes review, ETag-protected saves, one open draft per
+  topic, published versions frozen by a database trigger). Catalogue API in the
+  reader's language; free topics open, paid topics answer 402 until billing.
+  `pnpm db:seed` loads three demo grade 5 fraction topics in Uzbek and Russian.
+  Admins can author and review content; while `adminSelfReview` is on
+  (`config/content.yaml`), an admin may approve their own version, marked
+  `selfReview` in the audit log.
+- Media (`apps/api` media module, `apps/worker` transcoding, `packages/media`,
+  migration `2026111602_media`): presigned uploads straight to S3-compatible
+  storage (SeaweedFS locally and in CI), checks of the stored file (size, type,
+  first bytes, SVG without script), ffmpeg transcoding to an HLS ladder plus an
+  audio-only fallback, AES-128 per video with the key sealed at rest, token-bound
+  playlists and key endpoint (re-checks access, rate-limited per session),
+  watermark code, subtitles per locale. Worker image with ffmpeg
+  (`infra/docker/worker.Dockerfile`).
+- Studio (`apps/studio`): staff sign-in with authenticator enrolment and
+  recovery codes; the content tree; the topic editor (versions, Uzbek and
+  Russian fields side by side, step cards with reorder, video upload with
+  progress and transcoding status, subtitles, activity settings), save with
+  `If-Match`, submit, review with comments, publish, review history, and a
+  phone-sized preview per language. Per-request CSP nonce with the storage
+  origin in `connect-src` (`MEDIA_ORIGIN`).
+- `GET /studio/tree`: the whole catalogue with each topic's newest version.
+  Submitting a lesson now needs every video step's media to be ready (422
+  with the step's field).
+- `@mathpath/client`: the browser API client shared by web and studio
+  (`PUT` and extra headers added).
+- `MEDIA_BROWSER_ORIGINS`: outside production the API sets bucket CORS so
+  these origins can upload to and play from storage directly.
 - `config/auth.yaml` for token lifetimes, OTP resend delay and password rules.
 - Migration `2026111502_terms_acceptance`: the terms version each user accepted.
+- Web lesson player (`apps/web`): course list, course page with locked paid
+  topics, and `/learn/{topicId}` with a stepper. Videos play the encrypted HLS
+  stream with hls.js 1.7.4 (native HLS on iOS), with a moving watermark, speed
+  and quality choice, subtitles in the reader's language first, and a fresh
+  token after a long pause. Activities, practice and tests show a placeholder
+  until the question engine (6.4). The CSP allows the storage origin
+  (`MEDIA_ORIGIN`) for segments and subtitles.
+- `@mathpath/questions`: question engine with exact rational arithmetic, a small
+  expression language with a fixed function list, seeded random variables,
+  constraints, distractors and answer checking (decimal comma, mixed numbers,
+  simplified fractions). Templates are validated by sampling before review
+  (ADR-0011).
+- Migration `2026111603_questions`: versioned question templates with the same
+  draft → review → publish workflow and frozen published versions.
+- Studio API for question templates: list/create per topic, versions, draft save
+  with ETag, preview with sample generation; submit/review/publish reuse the
+  content routes.
+- Eight demo question templates across the three demo topics.
+- Practice and mastery tests (`apps/api` assessment module): `POST /attempts`,
+  items, answers and submit, plus `GET /topics/{topicId}/assessment-status`.
+  Practice marks each answer at once (hint after the first mistake, the
+  solution and right answer after the second); the mastery test marks at the
+  end with an 80% pass mark. The free plan's 20 practice answers a day are
+  counted per Tashkent day. Migration `2026111701_assessment`.
+- `config/learning.yaml`: `practice.itemsPerSet` and `masteryTest.items`.
+- Web practice and mastery test screens in the lesson player, with formulas
+  rendered by KaTeX 0.18.11 and an on-screen number pad.
+- Adaptivity (`apps/api` learning module, ADR-0006): after a failed mastery
+  test the gap router picks the weakest prerequisite (not mastered, low
+  mastery, stale or needing review) and asks for a 3-question check, with at
+  most 2 levels and 1 detour a day; a passed check returns to the topic, a
+  failed one puts the prerequisite on the path. Mastered topics get SM-2 spaced
+  reviews (1, 3, 7, 16, 35 days, then by ease). New routes: learning path,
+  progress, due reviews and step completion. Migration `2026111702_learning`
+  with a cycle check on the prerequisite graph.
+- `config/learning.yaml`: `review.items` and `review.initialEase`.
+- Web: the next step after a test (refresh a prerequisite, back to the topic,
+  next topic, take a break), a review screen, due reviews on the student home,
+  progress badges on the course page, and video and activity steps recorded as
+  done.
+- Studio question editor: a topic's question bank, and a form for question
+  templates (type, difficulty, variables, constraints, stem, answer, wrong
+  options, hints, solution) with live samples from the engine rendered by
+  KaTeX like the learner app, problems shown next to the part they are about,
+  and the same review and publish workflow as lessons.
+- Billing (`apps/api` billing module): plans from config, `POST /checkout`
+  with a required Idempotency-Key (one order per key), order status,
+  subscriptions and cancel at period end. A paid order creates a subscription
+  for the chosen children; a second purchase while covered starts when the
+  current period ends; a refund ends access at once. Paid topics and unlimited
+  practice now follow the subscription.
+- Payme Merchant API at `POST /payments/payme` (all six methods): merchant key
+  checked in constant time before anything else, every call logged, repeated
+  calls answered from the stored transaction, 12-hour timeout, refund after
+  payment, optional fiscal receipt details. Providers are switched on with
+  `PAYMENT_PROVIDERS`.
+- Click Shop API at `POST /payments/click/prepare` and `/complete`: MD5
+  signature checked in constant time before anything else, every call logged,
+  repeated calls answered from the stored transaction, a failed charge cancels
+  the payment, and a new attempt replaces an unfinished one. Checkout sends the
+  parent to `my.click.uz` with the amount in sum.
+- Promo codes and the free trial: admins create and stop codes in the studio
+  (percent or fixed, plans, total and per-parent limits, dates); parents check
+  a code at checkout, and it is used up only when the order is paid. The trial
+  covers chosen children for `trialDays`, once per account, child and device.
+- Web pricing, checkout (children, promo code, Payme or Click), payment return
+  page that waits for the provider, and a "Plan and payment" page with turning
+  off renewal; in Uzbek, Russian and English. Children show their current plan.
+- Gamification: XP only from server results (a practice answer right on the
+  first try, a passed mastery test once per topic, a passed review, a finished
+  daily quest), paid once per source through an idempotent ledger and capped
+  per Tashkent day for practice and review; levels; daily streaks with earned
+  freezes; badges; three daily quests from config. `GET /me/gamification`; the
+  answer and the test result return what they earned. The student home shows
+  level, streak, quests and badges, and answers show "+10 XP".
+- Weekly leagues: children with the parent's leaderboard consent join this
+  week's league (about 30 learners of the same tier and grade band) with
+  their first XP; standings show nicknames only; the worker closes each week
+  on Monday 00:05 Tashkent time and moves the top places up and the last ones
+  down through five tiers. `GET /leagues/current` and a league page in the
+  web app.
+- Parent dashboard: one card per child with this week's minutes against the
+  week before, topics mastered and one line that needs attention; a weekly
+  report (time per day, questions, XP, topics mastered, what needs attention
+  with a suggestion) with earlier weeks; adding a child with consent
+  confirmed by an SMS code. `GET /students/{id}/reports/weekly`. A
+  `confirm_action` code no longer needs the phone in the request: it goes to
+  the account's own number.
+- Admin console in the studio (`/users`, `/risk`, `/audit`): search users by
+  phone, name, nickname or ID (every search audited, phones masked); lock,
+  suspend or unlock an account and grant or take away staff roles with a written
+  reason (a staff role needs confirmed 2FA, an admin cannot change their own
+  account, and a lock or lost role signs the person out at once); decide risk
+  reviews with the signals that caused them (restricted accounts need an
+  interactive CAPTCHA on every sign-in, banned ones are suspended); read the
+  audit log by actor, target, action family and dates. Lists use keyset cursors.
+- Monitoring (`packages/observability`, `infra/monitoring`): JSON logs with
+  phone numbers, tokens and personal fields redacted; Prometheus metrics for
+  the API and worker on private ports (requests by route pattern, response
+  times, audit events, SMS spend against the caps, video jobs, scheduled
+  tasks); `GET /health/ready`; a nightly audit hash-chain check in the worker;
+  Prometheus, Alertmanager (Telegram and email), Loki, Alloy and Grafana with
+  alert rules for the security plan's C-39 list and an overview dashboard.
+  CI checks the monitoring configs. Guide: `docs/guides/monitoring.md`.
+- Production deployment: images for web and studio (Next.js standalone,
+  distroless), the edge proxy (Caddy with the Coraza OWASP CRS WAF and a per-IP
+  flood limit) and Postgres with pgBackRest; `infra/docker-compose.prod.yml` with
+  an internet-less data network, read-only containers and separate database roles
+  (`mathpath_migrator`; `mathpath_app`, which cannot change the schema or the
+  audit log; `monitoring`); `infra/deploy.sh` (signature check, migrations,
+  grants, storage set-up, health check, rollback); a release workflow that
+  builds, scans with Trivy, signs with Sigstore and publishes image digests;
+  continuous WAL archiving, nightly encrypted backups, a media sync and a monthly
+  automated restore drill, with alerts. Guides: `docs/guides/deploy.md`,
+  `docs/guides/backups.md`.
+- End-to-end tests (`tests/e2e`, Playwright): the family journey on a phone
+  (parent sign-up, adding a child with SMS-confirmed consent, the child's
+  family-code sign-in and a practice answer, wrong and right passwords) and the
+  studio admin journey (2FA enrolment, locking an account with a reason, the
+  audit log), with an axe WCAG 2.1 AA check on every screen visited and a
+  security-header check. A k6 load test (`tests/load`) of students practising,
+  run as a one-minute smoke in CI and at twice the 5k peak against staging by
+  hand. Guide: `docs/guides/testing.md`.
+- Refunds: admins find a family's payments in the studio (by phone or ID) and
+  refund a whole payment with a written reason. Click payments are reversed at
+  once through Click's Merchant API (`CLICK_MERCHANT_USER_ID`); Payme refunds are
+  recorded and completed when the transaction is cancelled in the Payme cabinet
+  (`CancelTransaction`), which also records cabinet refunds started at Payme.
+  The subscription ends when the money is returned; requests and outcomes are
+  audited. New `refunds` table, `GET /admin/payments`,
+  `POST /admin/payments/{id}/refunds`.
+- Daily billing reconciliation in the worker (06:00 Tashkent): paid payments
+  without a subscription, order and payment disagreements, amount mismatches,
+  refunds that left a subscription running, refund records out of step, stuck
+  payments and unfinished Payme refund requests, with an alert on any finding.
+  Guide: `docs/guides/payments.md`.
+- Sunday-evening report SMS to parents (worker, 19:00–21:00 Tashkent,
+  `config/reports.yaml`): one message per parent with each active child's
+  minutes, questions and mastered topics and a link to the parent page; by
+  default only parents with a paid subscription. At most one per parent and
+  week (`report_sms_log`), failures are not retried, its own metric and the
+  ReportSmsFailing alert. SMS code moved to `@mathpath/sms`, shared by the API
+  and the worker. Guide: `docs/guides/reports.md`.
+- Launch checklist (`docs/guides/launch-checklist.md`): everything the owner
+  must supply or confirm before going live.
+- `infra/server-setup.sh` prepares a fresh Ubuntu 24.04 server (updates,
+  firewall, Docker, cosign, checkout, `.env.prod` with generated secrets), and
+  `BACKUP_MODE=local` lets a test server run without off-site backup storage.
 - Errors are returned as RFC 9457 problem details with a stable `code` and request ID.
 - CI (format, lint, typecheck, tests with an 80% coverage gate, build) and security
   scanning (gitleaks, pnpm audit, OSV-Scanner, Semgrep, CodeQL); Renovate.

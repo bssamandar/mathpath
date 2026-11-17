@@ -172,15 +172,15 @@ flowchart LR
 
 ### 5.4 Assessment and learning (`assessment`, `learning`, `gamification`)
 
-| #   | STRIDE | Threat                                                                   | L   | I   | Risk | Mitigations                                                                                                                                       |
-| --- | ------ | ------------------------------------------------------------------------ | --- | --- | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| T24 | I      | Reading answer keys from the client                                      | 3   | 2   | 6    | Answers never leave the server; `question-engine` cannot be imported by `web` (lint rule) (C-16)                                                  |
-| T25 | T      | Replaying or tampering with answer requests (resubmitting until correct) | 3   | 2   | 6    | Server-side `tries` limit per item, idempotency keys, attempt state machine (C-16)                                                                |
-| T26 | T      | Bots or scripts answering tests very quickly                             | 2   | 2   | 4    | Server-side timing, anomaly job, results flagged for review, not silently awarded (C-25)                                                          |
-| T27 | T      | Answer sharing between students                                          | 3   | 1   | 3    | Parameterised questions and shuffled choices, so each student gets different numbers (C-16); identical-wrong-answer detection (C-25)              |
-| T28 | T      | XP farming (repeating easy items)                                        | 3   | 1   | 3    | XP only for first-try correct answers on new items, mastery passes and due reviews; unique ledger constraint; daily XP cap (C-26)                 |
-| T29 | E      | Sandbox escape through author-written template expressions               | 1   | 3   | 3    | A restricted math.js instance (no `import`, `evaluate`, `parse` of functions), time and size limits, generation in a worker with a timeout (C-17) |
-| T30 | D      | Expensive template (constraint loop that never succeeds)                 | 2   | 1   | 2    | Max generation attempts per item, rejected at preview time                                                                                        |
+| #   | STRIDE | Threat                                                                   | L   | I   | Risk | Mitigations                                                                                                                          |
+| --- | ------ | ------------------------------------------------------------------------ | --- | --- | ---- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| T24 | I      | Reading answer keys from the client                                      | 3   | 2   | 6    | Answers never leave the server; `question-engine` cannot be imported by `web` (lint rule) (C-16)                                     |
+| T25 | T      | Replaying or tampering with answer requests (resubmitting until correct) | 3   | 2   | 6    | Server-side `tries` limit per item, idempotency keys, attempt state machine (C-16)                                                   |
+| T26 | T      | Bots or scripts answering tests very quickly                             | 2   | 2   | 4    | Server-side timing, anomaly job, results flagged for review, not silently awarded (C-25)                                             |
+| T27 | T      | Answer sharing between students                                          | 3   | 1   | 3    | Parameterised questions and shuffled choices, so each student gets different numbers (C-16); identical-wrong-answer detection (C-25) |
+| T28 | T      | XP farming (repeating easy items)                                        | 3   | 1   | 3    | XP only for first-try correct answers on new items, mastery passes and due reviews; unique ledger constraint; daily XP cap (C-26)    |
+| T29 | E      | Sandbox escape through author-written template expressions               | 1   | 3   | 3    | An own expression engine with a fixed grammar and function list (ADR-0011), exact arithmetic, size, depth and time limits (C-17)     |
+| T30 | D      | Expensive template (constraint loop that never succeeds)                 | 2   | 1   | 2    | Max generation attempts per item, rejected at preview time                                                                           |
 
 ### 5.5 Payments (`billing`)
 

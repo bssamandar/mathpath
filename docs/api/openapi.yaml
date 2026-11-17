@@ -81,6 +81,29 @@ paths:
                   status: { type: string, const: ok }
                   version: { type: string }
 
+  /health/ready:
+    get:
+      tags: [Platform]
+      operationId: getReadiness
+      summary: 'Readiness check: the database and Redis answer within 2 seconds.'
+      description: |
+        For the load balancer, which stops sending traffic to an instance that
+        returns 503. Says which dependency is down, never why. The reverse
+        proxy keeps it off the public internet.
+      security: []
+      x-permission: public
+      responses:
+        '200':
+          description: Ready.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Readiness' }
+        '503':
+          description: A dependency is down.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Readiness' }
+
   # ───────────────────────────── Auth ─────────────────────────────
   /auth/otp:
     post:
@@ -100,14 +123,21 @@ paths:
           application/json:
             schema:
               type: object
-              required: [phone, purpose]
+              required: [purpose]
               additionalProperties: false
               properties:
-                phone: { $ref: '#/components/schemas/PhoneE164' }
+                phone:
+                  $ref: '#/components/schemas/PhoneE164'
+                  description: Required, except for `confirm_action`, where the code goes to the account's own number.
                 purpose:
                   type: string
-                  enum: [signup, login, reset_password, change_phone]
-                  description: '`reset_password` and `change_phone` are not implemented yet and return 400.'
+                  enum: [signup, login, confirm_action, reset_password, change_phone]
+                  description: |
+                    `confirm_action` proves possession of the phone before an important
+                    action, such as consent for a child (C-30). It needs a signed-in user
+                    (401 otherwise) and only the account's own number (400 `PHONE_MISMATCH`).
+                    A code works only for the purpose it was requested for.
+                    `reset_password` and `change_phone` are not implemented yet and return 400.
                 captchaToken: { type: string, maxLength: 4096 }
                 deviceToken: { $ref: '#/components/schemas/DeviceToken' }
       responses:
@@ -249,8 +279,12 @@ paths:
       operationId: loginChild
       summary: Sign a child in with family code and PIN.
       description: |
-        Children have no phone or password. Locks the PIN after N failures
-        (config) and notifies the parent.
+        Children have no phone or password. The family code is case-insensitive
+        and the nickname is matched ignoring case. A wrong code, nickname or PIN
+        all return the same 401. After `childPinFailures` wrong PINs the profile
+        is locked (423 `PROFILE_LOCKED`) and the parent gets an SMS; failures per
+        family code and per network are limited too (429). A student keeps at
+        most `sessions.maxConcurrentPerStudent` sessions; the oldest is signed out.
       security: []
       x-permission: public
       requestBody:
@@ -262,7 +296,7 @@ paths:
               required: [familyCode, nickname, pin]
               additionalProperties: false
               properties:
-                familyCode: { type: string, pattern: '^[A-Z0-9]{6,8}$' }
+                familyCode: { type: string, pattern: '^[A-Za-z0-9]{6,8}$' }
                 nickname: { type: string, maxLength: 32 }
                 pin: { type: string, pattern: '^[0-9]{4,6}$' }
                 deviceToken: { $ref: '#/components/schemas/DeviceToken' }
@@ -347,6 +381,12 @@ paths:
       tags: [Auth]
       operationId: enrolTotp
       summary: Start TOTP enrolment; returns a provisioning URI.
+      description: |
+        Any signed-in user may enrol (a staff role is granted only to an account
+        with 2FA). A pending enrolment expires after `mfa.enrolmentTtlMinutes`.
+        When the account already has a confirmed authenticator, the session must
+        have passed 2FA first (403 `MFA_REQUIRED`), so a password alone cannot
+        replace it. The secret is stored encrypted (AES-256-GCM).
       x-permission: authenticated
       responses:
         '200':
@@ -359,25 +399,39 @@ paths:
                 properties:
                   factorId: { $ref: '#/components/schemas/Id' }
                   otpauthUri: { type: string }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
 
   /auth/mfa/verify:
     post:
       tags: [Auth]
       operationId: verifyMfa
       summary: Confirm enrolment or complete an MFA-pending login.
+      description: |
+        Send `factorId` + `code` to confirm a new authenticator, `code` alone to
+        pass 2FA with the confirmed one, or `recoveryCode` alone. A TOTP code is
+        accepted once (its time step is stored); each recovery code works once.
+        Wrong codes return 401 `MFA_CODE_INVALID` and are limited per user
+        (`mfa.verifyFailures`, then 429). Success marks the session verified and
+        issues new tokens.
       x-permission: authenticated
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              required: [code]
-              additionalProperties: false
-              properties:
-                factorId: { $ref: '#/components/schemas/Id' }
-                code: { type: string, pattern: '^[0-9]{6}$' }
-                recoveryCode: { type: string, maxLength: 32 }
+              oneOf:
+                - type: object
+                  required: [code]
+                  additionalProperties: false
+                  properties:
+                    factorId: { $ref: '#/components/schemas/Id' }
+                    code: { type: string, pattern: '^[0-9]{6}$' }
+                - type: object
+                  required: [recoveryCode]
+                  additionalProperties: false
+                  properties:
+                    recoveryCode: { type: string, minLength: 10, maxLength: 32 }
       responses:
         '200':
           description: MFA satisfied. Recovery codes are returned once, on first enrolment.
@@ -385,6 +439,7 @@ paths:
             application/json:
               schema:
                 type: object
+                required: [session]
                 properties:
                   session: { $ref: '#/components/schemas/SessionInfo' }
                   recoveryCodes:
@@ -488,8 +543,11 @@ paths:
       summary: Add a child profile with parental consent.
       description: |
         Consent is recorded with the policy version and evidence. The parent
-        confirms with a fresh OTP (`consentOtpChallengeId` + code) to make the
-        consent verifiable.
+        confirms with a fresh `confirm_action` code sent to their own phone
+        (`consent.otpChallengeId` + `consent.otpCode`) to make the consent
+        verifiable. Errors: 401 `OTP_*` for a bad code, 403
+        `CONSENT_NOT_CONFIRMED` for another account's code, 409 `NICKNAME_TAKEN`,
+        422 `CONSENT_LEARNING_REQUIRED` or `PIN_TOO_SIMPLE`.
       x-permission: family:manage
       requestBody:
         required: true
@@ -513,6 +571,9 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Child' }
         '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/Unprocessable' }
 
   /children/{childId}:
@@ -644,6 +705,8 @@ paths:
       summary: Tracks with their courses.
       security: []
       x-permission: public
+      parameters:
+        - { name: locale, in: query, required: false, schema: { $ref: '#/components/schemas/Locale' }, description: 'Language of the returned texts. Without it, Accept-Language decides, then the default locale; a missing translation falls back to the default.' }
       responses:
         '200':
           description: OK (cacheable, ETag)
@@ -666,6 +729,7 @@ paths:
       x-permission: public
       parameters:
         - { name: courseId, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } }
+        - { name: locale, in: query, required: false, schema: { $ref: '#/components/schemas/Locale' }, description: 'Language of the returned texts. Without it, Accept-Language decides, then the default locale; a missing translation falls back to the default.' }
       responses:
         '200':
           description: OK
@@ -679,10 +743,14 @@ paths:
       tags: [Catalogue]
       operationId: getLesson
       summary: Lesson steps of a topic (the version pinned for this student).
-      description: Returns 402 with an upgrade hint if the topic is not free and the user has no entitlement.
+      description: |
+        Returns 402 `PAYMENT_REQUIRED` if the topic is not free and the user has
+        no entitlement, and 404 `TOPIC_NOT_FOUND` if the topic has no published
+        version. `completed` is always false until progress tracking lands (step 6.4).
       x-permission: content:read
       parameters:
         - $ref: '#/components/parameters/TopicId'
+        - { name: locale, in: query, required: false, schema: { $ref: '#/components/schemas/Locale' }, description: 'Language of the returned texts. Without it, Accept-Language decides, then the default locale; a missing translation falls back to the default.' }
       responses:
         '200':
           description: OK
@@ -698,6 +766,12 @@ paths:
       tags: [Media]
       operationId: getPlayback
       summary: Signed, expiring HLS playlist URL plus watermark payload.
+      description: >
+        For a ready video that appears in a published lesson the caller may open
+        (content staff may preview any ready video). `manifestUrl` is a
+        same-origin path carrying a token bound to the video, the caller and an
+        expiry (`config/content.yaml` media.playbackTtlSeconds); the player must
+        send the session with every playlist and key request.
       x-permission: content:read
       parameters:
         - { name: mediaId, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } }
@@ -721,6 +795,32 @@ paths:
                         locale: { $ref: '#/components/schemas/Locale' }
                         url: { type: string, format: uri }
         '402': { $ref: '#/components/responses/PaymentRequired' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /media/{mediaId}/hls/{playlist}:
+    get:
+      tags: [Media]
+      operationId: getHlsPlaylist
+      summary: An HLS playlist rewritten for this viewer (called by the player).
+      description: >
+        `master.m3u8` lists the renditions; `{rendition}.m3u8` (for example
+        `360p.m3u8` or `audio.m3u8`) lists encrypted segments as presigned
+        storage URLs (media.segmentUrlTtlSeconds) and points the key at
+        `GET /media/{mediaId}/key` with the same token. Only renditions the
+        worker recorded are served.
+      x-permission: content:read
+      parameters:
+        - { name: mediaId, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } }
+        - { name: playlist, in: path, required: true, schema: { type: string, pattern: '^(master|\\d{3,4}p|audio)\\.m3u8$' } }
+        - { name: token, in: query, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: 'The playlist, sent with Cache-Control: no-store.'
+          content:
+            application/vnd.apple.mpegurl:
+              schema: { type: string }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
 
   /media/{mediaId}/key:
     get:
@@ -734,11 +834,17 @@ paths:
         - { name: token, in: query, required: true, schema: { type: string } }
       responses:
         '200':
-          description: Raw 16-byte key.
+          description: 'Raw 16-byte key, sent with Cache-Control: no-store.'
           content:
             application/octet-stream:
               schema: { type: string, contentEncoding: binary }
-        '403': { $ref: '#/components/responses/Forbidden' }
+        '402': { $ref: '#/components/responses/PaymentRequired' }
+        '403':
+          description: '`PLAYBACK_TOKEN_INVALID`: the token is forged, expired, or for another video or user.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '404': { $ref: '#/components/responses/NotFound' }
         '429': { $ref: '#/components/responses/TooManyRequests' }
 
   # ──────────────────────────── Learning ────────────────────────────
@@ -747,11 +853,18 @@ paths:
       tags: [Learning]
       operationId: getLearningPath
       summary: Current personal learning path for a course.
-      description: Accessible to the student, their linked parents and teachers with sharing consent.
+      description: |
+        Accessible to the student, their linked parents and (later) teachers with
+        sharing consent; anyone else gets 404 `STUDENT_NOT_FOUND`. Computed on
+        read from current progress: due reviews first, then the course's topics
+        with every prerequisite before the topic that needs it, without
+        mastered topics; a prerequisite a failed gap check added sits just
+        before the topic it helps.
       x-permission: progress:read
       parameters:
         - $ref: '#/components/parameters/StudentId'
         - { name: courseId, in: query, required: true, schema: { $ref: '#/components/schemas/Id' } }
+        - { name: locale, in: query, required: false, schema: { type: string, enum: [uz-Latn, ru, en] } }
       responses:
         '200':
           description: OK
@@ -759,16 +872,19 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/LearningPath' }
         '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
 
   /students/{studentId}/progress:
     get:
       tags: [Learning]
       operationId: getProgress
       summary: Mastery by topic, time spent and weak areas for a course.
+      description: Same access rule as the learning path. Time spent is server-measured answer time, at most 5 minutes per question.
       x-permission: progress:read
       parameters:
         - $ref: '#/components/parameters/StudentId'
         - { name: courseId, in: query, required: true, schema: { $ref: '#/components/schemas/Id' } }
+        - { name: locale, in: query, required: false, schema: { type: string, enum: [uz-Latn, ru, en] } }
       responses:
         '200':
           description: OK
@@ -776,19 +892,25 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Progress' }
         '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
 
   /topics/{topicId}/steps/{stepIndex}/complete:
     post:
       tags: [Learning]
       operationId: completeStep
       summary: Mark a non-assessed step (video, activity) as completed.
-      description: Grants no XP (XP is awarded only for demonstrated mastery).
+      description: |
+        Grants no XP (XP is awarded only for demonstrated mastery). Repeating it
+        is harmless. Practice and tests complete through their attempts (409
+        `STEP_ASSESSED`).
       x-permission: learning:write
       parameters:
         - $ref: '#/components/parameters/TopicId'
-        - { name: stepIndex, in: path, required: true, schema: { type: integer, minimum: 0 } }
+        - { name: stepIndex, in: path, required: true, schema: { type: integer, minimum: 0, maximum: 100 } }
       responses:
         '204': { description: Recorded. }
+        '402': { $ref: '#/components/responses/PaymentRequired' }
+        '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
 
   /me/reviews/due:
@@ -808,6 +930,7 @@ paths:
                 properties:
                   items:
                     type: array
+                    description: Due now, oldest first, at most 50.
                     items:
                       type: object
                       required: [topicId, title, dueAt]
@@ -826,6 +949,17 @@ paths:
         Generates parameterised items server-side with a per-item seed.
         Enforces entitlements and the free daily exercise limit. Timed tests get
         a server-enforced `deadlineAt`.
+
+        A learner has at most one open attempt per assessment: starting again
+        returns the open one with status 200 instead of dealing new questions.
+        `practice`, `mastery` and `review` run on a `topicId`; the other
+        types return 422 `ASSESSMENT_UNAVAILABLE` until they are built. A
+        mastery test needs `learning.practice.minCorrectBeforeMasteryTest`
+        correct practice answers on the topic first (409 `MASTERY_LOCKED`).
+        A `review` is either the short check the gap router asked for
+        (`gapRouting.miniCheckItems` questions) or a spaced review of a
+        mastered topic (`review.items` questions); otherwise 409
+        `REVIEW_NOT_AVAILABLE`.
       x-permission: assessment:take
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -844,13 +978,24 @@ paths:
                 courseId: { $ref: '#/components/schemas/Id' }
                 assignmentId: { $ref: '#/components/schemas/Id' }
       responses:
+        '200':
+          description: The learner's open attempt on this assessment, resumed.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Attempt' }
         '201':
           description: Attempt created.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Attempt' }
         '402': { $ref: '#/components/responses/PaymentRequired' }
-        '409': { $ref: '#/components/responses/Conflict' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: '`NO_QUESTIONS` (the topic has no published questions), `MASTERY_LOCKED` or `REVIEW_NOT_AVAILABLE`.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
         '429': { $ref: '#/components/responses/TooManyRequests' }
 
   /attempts/{attemptId}:
@@ -894,7 +1039,14 @@ paths:
       description: |
         Feedback follows the assessment's policy: practice returns a hint after
         the first mistake and the full solution after the second; tests return
-        only `accepted: true` until the attempt is submitted.
+        only `accepted: true` until the attempt is submitted, and the learner may
+        change an answer until then.
+
+        In practice an answer that cannot be read (for example `3,,5`) returns
+        `accepted: false, reason: unreadable` and does not use a try. The first
+        marked answer on an item counts against the free daily exercise limit
+        (402 `DAILY_LIMIT_REACHED` once it is used up). A retry with the same
+        `Idempotency-Key` returns the first result without counting again.
       x-permission: assessment:take
       parameters:
         - $ref: '#/components/parameters/AttemptId'
@@ -918,7 +1070,13 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/AnswerFeedback' }
-        '409': { $ref: '#/components/responses/Conflict' }
+        '402': { $ref: '#/components/responses/PaymentRequired' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: '`ATTEMPT_CLOSED` or `ITEM_CLOSED` (the practice item is already finished).'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
         '410': { $ref: '#/components/responses/Gone' }
 
   /attempts/{attemptId}/submit:
@@ -926,6 +1084,7 @@ paths:
       tags: [Assessment]
       operationId: submitAttempt
       summary: Finish an attempt and get the result.
+      description: Marks a test. Submitting a finished attempt again returns the same result.
       x-permission: assessment:take
       parameters:
         - $ref: '#/components/parameters/AttemptId'
@@ -936,7 +1095,26 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/AttemptResult' }
+        '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+        '410': { $ref: '#/components/responses/Gone' }
+
+  /topics/{topicId}/assessment-status:
+    get:
+      tags: [Assessment]
+      operationId: getTopicAssessmentStatus
+      summary: What the lesson player needs for the practice and mastery steps of a topic.
+      x-permission: assessment:take
+      parameters:
+        - $ref: '#/components/parameters/TopicId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TopicAssessmentStatus' }
+        '402': { $ref: '#/components/responses/PaymentRequired' }
+        '404': { $ref: '#/components/responses/NotFound' }
 
   # ────────────────────────── Gamification ──────────────────────────
   /me/gamification:
@@ -951,6 +1129,8 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/GamificationSummary' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
 
   /leagues/current:
     get:
@@ -964,6 +1144,8 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/League' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
 
   # ──────────────────────────── Billing ────────────────────────────
   /plans:
@@ -971,6 +1153,7 @@ paths:
       tags: [Billing]
       operationId: listPlans
       summary: Available plans and prices (from config).
+      description: Also lists the payment providers that are switched on and the trial length.
       security: []
       x-permission: public
       responses:
@@ -980,17 +1163,24 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [items]
+                required: [items, providers, trialDays]
                 properties:
                   items:
                     type: array
                     items: { $ref: '#/components/schemas/Plan' }
+                  providers:
+                    type: array
+                    items: { $ref: '#/components/schemas/PaymentProviderCode' }
+                  trialDays: { type: integer, description: 0 when trials are off. }
 
   /promo-codes/validate:
     post:
       tags: [Billing]
       operationId: validatePromoCode
       summary: Check a promo code and preview the discounted price.
+      description: |
+        Codes are case-insensitive. Checks share a per-parent rate limit with
+        checkout (config `limits.rateLimits.promoChecksPerUser`).
       x-permission: billing:purchase
       requestBody:
         required: true
@@ -1015,6 +1205,11 @@ paths:
                   valid: { type: boolean }
                   amount: { $ref: '#/components/schemas/Money' }
                   discount: { $ref: '#/components/schemas/Money' }
+                  reason:
+                    type: string
+                    description: Present when not valid.
+                    enum: [not_found, not_started, expired, plan, used_up, already_used, too_large]
+        '422': { $ref: '#/components/responses/Unprocessable' }
         '429': { $ref: '#/components/responses/TooManyRequests' }
 
   /checkout:
@@ -1025,9 +1220,21 @@ paths:
       description: |
         Price is taken from config and snapshotted on the order. Card details
         are entered on the provider's page; MathPath never receives them.
+        The Idempotency-Key header is required here: repeating a key returns the
+        same order. Every student must be one of the parent's linked children.
+        If a student is already covered, the new period starts when the current
+        coverage ends. Errors: 400 IDEMPOTENCY_KEY_REQUIRED; 404 STUDENT_NOT_FOUND;
+        409 TOO_MANY_STUDENTS; 422 PLAN_NOT_FOUND, PROVIDER_UNAVAILABLE,
+        PROMO_INVALID (the field message is the reason, as in validate),
+        RETURN_URL_NOT_ALLOWED; 429 after too many promo code checks.
       x-permission: billing:purchase
       parameters:
-        - $ref: '#/components/parameters/IdempotencyKey'
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: Client-generated UUID. Repeating it returns the original order.
+          schema: { type: string, format: uuid }
+        - { name: locale, in: query, required: false, schema: { $ref: '#/components/schemas/Locale' } }
       requestBody:
         required: true
         content:
@@ -1042,10 +1249,18 @@ paths:
                 studentIds:
                   type: array
                   minItems: 1
+                  maxItems: 10
                   items: { $ref: '#/components/schemas/Id' }
-                promoCode: { type: string, maxLength: 32 }
-                saveCardForRenewal: { type: boolean, default: true }
-                returnUrl: { type: string, format: uri, description: Must match an allow-listed origin. }
+                promoCode: { type: string, minLength: 1, maxLength: 32 }
+                saveCardForRenewal:
+                  type: boolean
+                  default: true
+                  description: Accepted now; saved cards arrive with auto-renewal.
+                returnUrl:
+                  type: string
+                  format: uri
+                  maxLength: 500
+                  description: Must be on an allow-listed web origin (CORS_ORIGINS).
       responses:
         '201':
           description: Order created.
@@ -1060,13 +1275,16 @@ paths:
                   redirectUrl: { type: string, format: uri }
                   expiresAt: { type: string, format: date-time }
         '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
 
   /orders/{orderId}:
     get:
       tags: [Billing]
       operationId: getOrder
       summary: Order status (polled by the return page).
+      description: Only the parent who placed the order sees it; anyone else gets 404 ORDER_NOT_FOUND.
       x-permission: billing:read
       parameters:
         - { name: orderId, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } }
@@ -1077,10 +1295,11 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [orderId, status]
+                required: [orderId, status, amount]
                 properties:
                   orderId: { $ref: '#/components/schemas/Id' }
                   status: { type: string, enum: [created, pending, paid, cancelled, expired] }
+                  amount: { $ref: '#/components/schemas/Money' }
                   subscription: { $ref: '#/components/schemas/Subscription' }
         '404': { $ref: '#/components/responses/NotFound' }
 
@@ -1088,7 +1307,7 @@ paths:
     get:
       tags: [Billing]
       operationId: listSubscriptions
-      summary: The parent's subscriptions, payment methods and payment history.
+      summary: The parent's subscriptions (saved cards and payment history join later).
       x-permission: billing:read
       responses:
         '200':
@@ -1097,11 +1316,12 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [items]
+                required: [items, trialAvailable]
                 properties:
                   items:
                     type: array
                     items: { $ref: '#/components/schemas/Subscription' }
+                  trialAvailable: { type: boolean }
 
   /subscriptions/{subscriptionId}/cancel:
     post:
@@ -1117,12 +1337,19 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Subscription' }
+        '404': { $ref: '#/components/responses/NotFound' }
 
   /trials:
     post:
       tags: [Billing]
       operationId: startTrial
-      summary: Start the free trial (one per account, device and card).
+      summary: Start the free trial (one per account, per child and per device).
+      description: |
+        Covers the chosen children for `trialDays` with plan code `trial`; it
+        never renews. Errors: 422 TRIAL_UNAVAILABLE (trials off); 409
+        TRIAL_USED (this account, child or device had one), ALREADY_SUBSCRIBED,
+        TOO_MANY_STUDENTS; 404 STUDENT_NOT_FOUND. The device check applies when
+        a device token is sent; one per card arrives with saved cards.
       x-permission: billing:purchase
       requestBody:
         required: true
@@ -1130,12 +1357,13 @@ paths:
           application/json:
             schema:
               type: object
-              required: [studentIds, deviceToken]
+              required: [studentIds]
               additionalProperties: false
               properties:
                 studentIds:
                   type: array
                   minItems: 1
+                  maxItems: 10
                   items: { $ref: '#/components/schemas/Id' }
                 deviceToken: { $ref: '#/components/schemas/DeviceToken' }
       responses:
@@ -1144,7 +1372,9 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Subscription' }
+        '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
 
   # ─────────────────────── Payment callbacks ───────────────────────
   /payments/payme:
@@ -1159,7 +1389,12 @@ paths:
         statement). Repeated calls with the same transaction ID return the stored
         result. Optionally restricted to the provider's published IP ranges at the proxy.
         Body/response shapes follow Payme's specification and are validated in
-        the adapter, not in this contract.
+        the adapter, not in this contract. Answers 404 PROVIDER_UNAVAILABLE when
+        Payme is not listed in PAYMENT_PROVIDERS. JSON-RPC error codes used:
+        -32504 bad credentials, -32600 invalid request, -32601 unknown method,
+        -32400 system error, -31001 wrong amount, -31003 transaction not found,
+        -31008 cannot perform (cancelled or timed out after 12 h), -31050 order
+        not found, -31051 order not payable, -31052 order has another live payment.
       security: []
       x-permission: provider:payme
       requestBody:
@@ -1180,8 +1415,17 @@ paths:
       operationId: clickCallback
       summary: Click merchant callbacks (prepare and complete).
       description: |
-        Called by Click only. The `sign_string` is recomputed and compared in
-        constant time before the body is trusted. Idempotent by Click transaction ID.
+        Called by Click only (Shop API). The `sign_string` (MD5 of the call's
+        fields and the service's secret key) is recomputed and compared in
+        constant time before the body is trusted. Idempotent by Click transaction
+        ID: a repeated Prepare returns the same `merchant_prepare_id`, and a
+        repeated Complete for a paid transaction returns success. Answers 404
+        PROVIDER_UNAVAILABLE when Click is not listed in PAYMENT_PROVIDERS.
+        Error codes in the body: 0 success, -1 signature check failed, -2 wrong
+        amount, -3 action does not match the URL, -4 already paid, -5 order not
+        found, -6 transaction not found, -8 bad request (including another
+        service ID), -9 transaction cancelled (failed charge, expired order or
+        an attempt replaced by a newer one).
       security: []
       x-permission: provider:click
       parameters:
@@ -1388,15 +1632,39 @@ paths:
       x-permission: progress:read
       parameters:
         - $ref: '#/components/parameters/StudentId'
-        - { name: weekStart, in: query, required: false, schema: { type: string, format: date } }
+        - name: weekStart
+          in: query
+          required: false
+          description: The Monday of a past or this week; defaults to this week.
+          schema: { type: string, format: date }
+        - { name: locale, in: query, required: false, schema: { $ref: '#/components/schemas/Locale' }, description: Language of topic titles. }
       responses:
         '200':
           description: OK
           content:
             application/json:
               schema: { $ref: '#/components/schemas/WeeklyReport' }
+        '404':
+          description: '`STUDENT_NOT_FOUND`: not the caller or one of their children.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
 
   # ──────────────────────────── Studio ────────────────────────────
+  /studio/tree:
+    get:
+      tags: [Studio]
+      operationId: getStudioTree
+      summary: Tracks, courses, chapters and topics with each topic's newest version, drafts included.
+      x-permission: content:author
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StudioTree' }
+
   /studio/topics/{topicId}/versions:
     parameters:
       - $ref: '#/components/parameters/TopicId'
@@ -1421,10 +1689,13 @@ paths:
       tags: [Studio]
       operationId: createTopicDraft
       summary: Create a new draft (copied from the latest version).
+      description: A topic has at most one open version; another one returns 409 `DRAFT_EXISTS`.
       x-permission: content:author
       responses:
         '201':
           description: Draft created.
+          headers:
+            ETag: { schema: { type: string }, description: Send as If-Match when saving. }
           content:
             application/json:
               schema: { $ref: '#/components/schemas/TopicVersion' }
@@ -1440,6 +1711,8 @@ paths:
       responses:
         '200':
           description: OK
+          headers:
+            ETag: { schema: { type: string }, description: Send as If-Match when saving. }
           content:
             application/json:
               schema: { $ref: '#/components/schemas/TopicVersion' }
@@ -1464,13 +1737,34 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
         '412': { $ref: '#/components/responses/PreconditionFailed' }
 
-  /studio/question-templates/{templateId}/versions:
+  /studio/topics/{topicId}/question-templates:
     parameters:
-      - { name: templateId, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } }
+      - $ref: '#/components/parameters/TopicId'
+    get:
+      tags: [Studio]
+      operationId: listQuestionTemplates
+      summary: Question templates of a topic, each with its newest version.
+      x-permission: content:author
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/QuestionTemplateSummary' }
+        '404': { $ref: '#/components/responses/NotFound' }
     post:
       tags: [Studio]
-      operationId: saveQuestionDraft
-      summary: Create or update a draft of a question template.
+      operationId: createQuestionTemplate
+      summary: Create a question template with its first draft.
+      description: >
+        The body must have the right shape (400 otherwise). Whether it generates
+        items is checked on submit and in the preview, so work in progress can be saved.
       x-permission: content:author
       requestBody:
         required: true
@@ -1479,30 +1773,22 @@ paths:
             schema: { $ref: '#/components/schemas/QuestionTemplateInput' }
       responses:
         '201':
-          description: Saved.
+          description: Created.
+          headers:
+            ETag: { schema: { type: string }, description: Send as If-Match when saving. }
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/ContentVersionSummary' }
-        '422': { $ref: '#/components/responses/Unprocessable' }
+              schema: { $ref: '#/components/schemas/QuestionTemplateVersion' }
+        '404': { $ref: '#/components/responses/NotFound' }
 
-  /studio/question-templates/preview:
-    post:
+  /studio/question-templates/{templateId}/versions:
+    parameters:
+      - { name: templateId, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } }
+    get:
       tags: [Studio]
-      operationId: previewQuestion
-      summary: Generate sample instances (with answers) for authoring.
-      description: Runs the sandboxed engine with N random seeds; reports constraint failures.
+      operationId: listQuestionVersions
+      summary: Version history of a question template.
       x-permission: content:author
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [template]
-              properties:
-                template: { $ref: '#/components/schemas/QuestionTemplateInput' }
-                samples: { type: integer, minimum: 1, maximum: 20, default: 5 }
-                locale: { $ref: '#/components/schemas/Locale' }
       responses:
         '200':
           description: OK
@@ -1510,18 +1796,113 @@ paths:
             application/json:
               schema:
                 type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/ContentVersionSummary' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [Studio]
+      operationId: createQuestionDraft
+      summary: Create a new draft (copied from the latest version).
+      description: A template has at most one open version; another one returns 409 `DRAFT_EXISTS`.
+      x-permission: content:author
+      responses:
+        '201':
+          description: Draft created.
+          headers:
+            ETag: { schema: { type: string }, description: Send as If-Match when saving. }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/QuestionTemplateVersion' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /studio/question-template-versions/{versionId}:
+    parameters:
+      - $ref: '#/components/parameters/VersionId'
+    get:
+      tags: [Studio]
+      operationId: getQuestionVersion
+      summary: Full question template version, body included (staff only).
+      x-permission: content:author
+      responses:
+        '200':
+          description: OK
+          headers:
+            ETag: { schema: { type: string }, description: Send as If-Match when saving. }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/QuestionTemplateVersion' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [Studio]
+      operationId: saveQuestionDraft
+      summary: Save a draft. Only drafts in `draft` or `changes_requested` can be edited.
+      x-permission: content:author
+      parameters:
+        - { name: If-Match, in: header, required: true, schema: { type: string }, description: ETag of the version being edited (prevents lost updates). }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/QuestionTemplateInput' }
+      responses:
+        '200':
+          description: Saved.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/QuestionTemplateVersion' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '412': { $ref: '#/components/responses/PreconditionFailed' }
+
+  /studio/question-templates/preview:
+    post:
+      tags: [Studio]
+      operationId: previewQuestion
+      summary: Generate sample items (with answers) for authoring.
+      description: >
+        Runs the sandboxed engine with random seeds. A broken template is not an
+        error: the problem comes back in `warnings` with its field, and so do
+        missing translations in the required content locales.
+      x-permission: content:author
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type, body]
+              additionalProperties: false
+              properties:
+                type: { $ref: '#/components/schemas/QuestionType' }
+                body: { $ref: '#/components/schemas/QuestionTemplateBody' }
+                samples: { type: integer, minimum: 1, maximum: 20, default: 5 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [samples, warnings]
                 properties:
                   samples:
                     type: array
                     items:
                       type: object
                       properties:
-                        params: { type: object }
-                        instance: { $ref: '#/components/schemas/QuestionInstance' }
-                        answer: { type: object }
+                        params: { type: object, additionalProperties: { type: string } }
+                        instance: { type: object, description: 'What a learner would see: stem per locale, input kind and choices.' }
+                        answer: { type: object, description: The answer key the server keeps. }
                   warnings:
                     type: array
-                    items: { type: string }
+                    items:
+                      type: object
+                      required: [field, message]
+                      properties:
+                        field: { type: string }
+                        message: { type: string }
 
   /studio/versions/{versionId}/submit:
     parameters:
@@ -1530,6 +1911,13 @@ paths:
       tags: [Studio]
       operationId: submitForReview
       summary: Move a draft (topic or question) to review.
+      description: |
+        Refused with 422 `CONTENT_INCOMPLETE` (listing the fields) when a title,
+        summary or step prompt lacks a required content locale
+        (`config/content.yaml`), or when the lesson has no steps. A question
+        template must also generate valid items: the engine runs it with many
+        seeds and reports the first broken field (for example
+        `constraints` when no values meet them).
       x-permission: content:author
       responses:
         '200':
@@ -1546,6 +1934,7 @@ paths:
       tags: [Studio]
       operationId: reviewVersion
       summary: Approve or request changes. The reviewer must not be the author.
+      description: The author reviewing their own version gets 403 `FOUR_EYES` (C-18).
       x-permission: content:review
       requestBody:
         required: true
@@ -1580,6 +1969,10 @@ paths:
       tags: [Studio]
       operationId: publishVersion
       summary: Publish an approved version (it becomes immutable).
+      description: |
+        The previously published version is archived. Published and archived
+        versions cannot be changed or deleted (a database trigger enforces it).
+        A version in any other state than `approved` returns 409 `VERSION_STATE_CONFLICT`.
       x-permission: content:publish
       responses:
         '200':
@@ -1605,9 +1998,19 @@ paths:
               additionalProperties: false
               properties:
                 kind: { type: string, enum: [video, image, subtitle] }
-                contentType: { type: string, enum: [video/mp4, image/png, image/jpeg, image/svg+xml, text/vtt] }
-                sizeBytes: { type: integer, minimum: 1, maximum: 2147483648 }
+                contentType:
+                  type: string
+                  enum: [video/mp4, image/png, image/jpeg, image/svg+xml, text/vtt]
+                  description: video → video/mp4; image → png, jpeg or svg+xml; subtitle → text/vtt.
+                sizeBytes:
+                  type: integer
+                  minimum: 1
+                  maximum: 2147483648
+                  description: Exact size; it is signed into the upload URL. Limits per kind are in config/content.yaml.
                 locale: { $ref: '#/components/schemas/Locale' }
+                videoId:
+                  $ref: '#/components/schemas/Id'
+                  description: Subtitles only (required with `locale`), the video they belong to.
       responses:
         '201':
           description: Upload slot created.
@@ -1618,8 +2021,59 @@ paths:
                 required: [mediaId, uploadUrl, expiresAt]
                 properties:
                   mediaId: { $ref: '#/components/schemas/Id' }
-                  uploadUrl: { type: string, format: uri }
+                  uploadUrl:
+                    type: string
+                    format: uri
+                    description: PUT the file here with the same Content-Type and size.
                   expiresAt: { type: string, format: date-time }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /studio/media/{mediaId}/complete:
+    post:
+      tags: [Studio]
+      operationId: completeMediaUpload
+      summary: Tell the API the upload finished.
+      description: >
+        The API checks the stored object (size, type, first bytes; SVG with
+        script is refused). Videos move to `uploaded` and are queued for
+        transcoding; images and subtitles become `ready`. Calling it again for
+        an `uploaded` video queues it again (idempotent).
+      x-permission: content:author
+      parameters:
+        - { name: mediaId, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MediaAsset' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: '`UPLOAD_MISSING` (the file has not arrived) or `MEDIA_STATE_CONFLICT`.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '422':
+          description: '`UPLOAD_REJECTED`: the file does not match the request; the asset is `failed`.'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /studio/media/{mediaId}:
+    get:
+      tags: [Studio]
+      operationId: getMediaAsset
+      summary: Status of an upload (the studio polls it while a video transcodes).
+      x-permission: content:author
+      parameters:
+        - { name: mediaId, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MediaAsset' }
+        '404': { $ref: '#/components/responses/NotFound' }
 
   # ───────────────────────────── Admin ─────────────────────────────
   /admin/users:
@@ -1627,6 +2081,12 @@ paths:
       tags: [Admin]
       operationId: adminSearchUsers
       summary: Search users by phone, name or ID. Access is audited.
+      description: |
+        `q` is a user ID, a phone number (with or without +998, spaces or
+        dashes; matched exactly) or the start of a first name, last name,
+        full name or learner nickname. Newest accounts first. Every search is
+        written to the audit log with the kind of term and the number of
+        results, never the term itself. Phone numbers come back masked.
       x-permission: admin:users
       parameters:
         - { name: q, in: query, required: true, schema: { type: string, minLength: 3, maxLength: 64 } }
@@ -1653,6 +2113,15 @@ paths:
       tags: [Admin]
       operationId: adminUpdateUser
       summary: Change status or roles. Granting staff roles requires the target to have MFA.
+      description: |
+        Only `teacher`, `author`, `reviewer`, `admin` and `support` are
+        managed here; `student` and `parent` come from sign-up. Each status
+        change and each role granted or taken away is a separate audit entry
+        with the reason. Locking, suspending or taking a role away signs the
+        person out everywhere at once. Errors: 404 USER_NOT_FOUND;
+        409 ACCOUNT_PENDING_DELETION; 422 SELF_CHANGE_FORBIDDEN (an admin
+        cannot change their own account), MFA_NOT_ENROLLED (a staff role
+        needs confirmed 2FA, C-08), VALIDATION_FAILED.
       x-permission: admin:users
       requestBody:
         required: true
@@ -1662,14 +2131,17 @@ paths:
               type: object
               required: [reason]
               additionalProperties: false
+              description: At least one of status, addRoles or removeRoles.
               properties:
                 status: { type: string, enum: [active, locked, suspended] }
                 addRoles:
                   type: array
-                  items: { $ref: '#/components/schemas/Role' }
+                  maxItems: 5
+                  items: { $ref: '#/components/schemas/ManagedRole' }
                 removeRoles:
                   type: array
-                  items: { $ref: '#/components/schemas/Role' }
+                  maxItems: 5
+                  items: { $ref: '#/components/schemas/ManagedRole' }
                 reason: { type: string, minLength: 5, maxLength: 500 }
       responses:
         '200':
@@ -1677,16 +2149,18 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/AdminUser' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/Unprocessable' }
 
   /admin/risk-reviews:
     get:
       tags: [Admin]
       operationId: adminListRiskReviews
-      summary: Accounts flagged by the risk engine.
+      summary: Accounts flagged by the risk engine, newest first.
       x-permission: admin:risk
       parameters:
-        - { name: status, in: query, schema: { type: string, enum: [open, cleared, restricted, banned] } }
+        - { name: status, in: query, schema: { type: string, enum: [open, cleared, restricted, banned], default: open } }
         - $ref: '#/components/parameters/Cursor'
         - $ref: '#/components/parameters/Limit'
       responses:
@@ -1708,6 +2182,13 @@ paths:
       tags: [Admin]
       operationId: adminDecideRiskReview
       summary: Clear, restrict or ban a flagged account.
+      description: |
+        `cleared` sets the account back to normal risk. `restricted` makes
+        every sign-in and code request ask for an interactive CAPTCHA.
+        `banned` suspends the account and signs it out everywhere. The notes
+        are the written reason and go to the audit log. Errors:
+        404 REVIEW_NOT_FOUND; 409 REVIEW_ALREADY_DECIDED;
+        422 SELF_CHANGE_FORBIDDEN, VALIDATION_FAILED.
       x-permission: admin:risk
       parameters:
         - { name: reviewId, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } }
@@ -1721,19 +2202,62 @@ paths:
               additionalProperties: false
               properties:
                 decision: { type: string, enum: [cleared, restricted, banned] }
-                notes: { type: string, maxLength: 1000 }
+                notes: { type: string, minLength: 5, maxLength: 1000 }
       responses:
         '200':
           description: Decided.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/RiskReview' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /admin/payments:
+    get:
+      tags: [Admin]
+      operationId: adminSearchPayments
+      summary: A parent's payments by phone number, or one payment by payment, order or owner ID.
+      description: |
+        Newest first, at most 50, each with its refunds. Phone numbers come
+        back masked. The search is audited (`admin.payment_search`).
+        Errors: 400 VALIDATION_FAILED (a name instead of a phone number or ID).
+      x-permission: admin:billing
+      parameters:
+        - { name: q, in: query, required: true, schema: { type: string, minLength: 3, maxLength: 64 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/AdminPayment' }
+        '400': { $ref: '#/components/responses/BadRequest' }
 
   /admin/payments/{paymentId}/refunds:
     post:
       tags: [Admin]
       operationId: adminRefundPayment
-      summary: Refund a payment fully or partially through its provider.
+      summary: Refund a whole payment through its provider.
+      description: |
+        Payme and Click refund whole payments only, so `amountTiyin` must equal
+        the payment's amount (a field kept for providers with partial refunds).
+        Click is reversed at once through its Merchant API: the answer is
+        `succeeded` or `failed` with Click's reason. Payme's Merchant API cannot
+        start a refund: the answer is `requested`, and the refund completes when
+        the transaction is cancelled in the Payme business cabinet and Payme
+        calls CancelTransaction. The subscription ends when the money is
+        returned. Reason and outcome go to the audit log.
+        The Idempotency-Key header is required.
+        Errors: 400 IDEMPOTENCY_KEY_REQUIRED, VALIDATION_FAILED;
+        404 PAYMENT_NOT_FOUND; 409 PAYMENT_NOT_REFUNDABLE, REFUND_IN_PROGRESS,
+        IDEMPOTENCY_KEY_REUSED; 422 PARTIAL_REFUND_UNSUPPORTED,
+        REFUND_UNAVAILABLE (Click without Merchant API access).
       x-permission: admin:billing
       parameters:
         - { name: paymentId, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } }
@@ -1751,22 +2275,42 @@ paths:
                 reason: { type: string, minLength: 5, maxLength: 500 }
       responses:
         '202':
-          description: Refund requested.
+          description: Refund requested, done or refused by the provider.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Refund' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /admin/promo-codes:
+    get:
+      tags: [Admin]
+      operationId: adminListPromoCodes
+      summary: Promo codes, newest first, with how many paid orders used each.
+      x-permission: admin:billing
+      responses:
+        '200':
+          description: OK
           content:
             application/json:
               schema:
                 type: object
-                required: [refundId, status]
+                required: [items]
                 properties:
-                  refundId: { $ref: '#/components/schemas/Id' }
-                  status: { type: string, enum: [requested, succeeded, failed] }
-        '409': { $ref: '#/components/responses/Conflict' }
-
-  /admin/promo-codes:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/PromoCode' }
     post:
       tags: [Admin]
       operationId: adminCreatePromoCode
       summary: Create a promo code.
+      description: |
+        The code is stored upper-case. `value` is a percentage (1–100) or an
+        amount in tiyin. A code never makes a plan free: if the discount would
+        reach the price, checkout refuses it. Errors: 409 PROMO_CODE_EXISTS;
+        422 PLAN_NOT_FOUND, VALIDATION_FAILED.
       x-permission: admin:billing
       requestBody:
         required: true
@@ -1788,19 +2332,44 @@ paths:
                 validFrom: { type: string, format: date-time }
                 validTo: { type: string, format: date-time }
       responses:
-        '201': { description: Created. }
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PromoCode' }
         '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /admin/promo-codes/{promoCodeId}/deactivate:
+    post:
+      tags: [Admin]
+      operationId: adminDeactivatePromoCode
+      summary: Stop a promo code; orders already paid keep their price.
+      x-permission: admin:billing
+      parameters:
+        - { name: promoCodeId, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } }
+      responses:
+        '200':
+          description: Deactivated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PromoCode' }
+        '404': { $ref: '#/components/responses/NotFound' }
 
   /admin/audit-log:
     get:
       tags: [Admin]
       operationId: adminListAuditLog
-      summary: Search the append-only audit log.
+      summary: Search the append-only audit log, newest first.
+      description: |
+        `action` matches that action and every action under it, so `user`
+        finds `user.role.grant` and `user.status_change`. `from` is inclusive
+        and `to` exclusive.
       x-permission: admin:audit
       parameters:
         - { name: actorId, in: query, schema: { $ref: '#/components/schemas/Id' } }
         - { name: targetId, in: query, schema: { $ref: '#/components/schemas/Id' } }
-        - { name: action, in: query, schema: { type: string } }
+        - { name: action, in: query, schema: { type: string, pattern: '^[a-z_]+(\.[a-z_]+)*$', maxLength: 64 } }
         - { name: from, in: query, schema: { type: string, format: date-time } }
         - { name: to, in: query, schema: { type: string, format: date-time } }
         - $ref: '#/components/parameters/Cursor'
@@ -1882,7 +2451,7 @@ components:
       name: position
       in: path
       required: true
-      schema: { type: integer, minimum: 0 }
+      schema: { type: integer, minimum: 1, maximum: 200 }
     ClassId:
       name: classId
       in: path
@@ -2251,6 +2820,7 @@ components:
       properties:
         id: { $ref: '#/components/schemas/Id' }
         type: { $ref: '#/components/schemas/AssessmentType' }
+        topicId: { type: ['string', 'null'], format: uuid }
         status: { type: string, enum: [in_progress, submitted, expired, invalidated] }
         itemCount: { type: integer, description: For adaptive diagnostics this is the maximum. }
         answeredCount: { type: integer }
@@ -2287,11 +2857,16 @@ components:
         ordering:
           type: array
           items: { type: object, properties: { id: { type: string }, label: { type: string } } }
-        inputHint: { type: string, description: For example "fraction" or "integer" for the math keyboard. }
+        inputHint:
+          type: string
+          enum: [number, fraction, single, multiple]
+          description: Which answer control to show (number pad, fraction pad, or choices).
         media:
           type: array
           items: { type: string, format: uri }
         previousResponse: { $ref: '#/components/schemas/AnswerResponse' }
+        closed: { type: boolean, description: Practice only. The item is finished (right, or solution shown). }
+        lastFeedback: { $ref: '#/components/schemas/AnswerFeedback' }
 
     QuestionType:
       type: string
@@ -2343,12 +2918,21 @@ components:
       type: object
       required: [accepted]
       properties:
-        accepted: { type: boolean }
+        accepted: { type: boolean, description: false when the answer could not be read; no try is used. }
         correct: { type: [boolean, 'null'], description: null in tests until submission. }
+        reason:
+          type: string
+          enum: [unreadable, not_simplified, form, wrong]
+          description: Why the answer was not right, so the screen can say "simplify the fraction".
         triesLeft: { type: integer }
         hint: { type: [string, 'null'] }
         solution: { type: [string, 'null'], description: 'Full worked solution, shown per feedback policy.' }
-        xpAwarded: { type: integer, description: Shown optimistically; the ledger is authoritative. }
+        correctAnswer:
+          type: [string, 'null']
+          description: The right answer (inline LaTeX allowed), once a practice item is finished without it.
+        reward:
+          $ref: '#/components/schemas/Reward'
+          description: Practice only. What this answer earned; a retried request returns the same.
         nextPosition: { type: [integer, 'null'], description: For adaptive diagnostics. }
 
     AttemptResult:
@@ -2356,6 +2940,7 @@ components:
       required: [attemptId, score, maxScore, passed, byTopic]
       properties:
         attemptId: { $ref: '#/components/schemas/Id' }
+        type: { $ref: '#/components/schemas/AssessmentType' }
         score: { type: number }
         maxScore: { type: number }
         passed: { type: [boolean, 'null'] }
@@ -2376,66 +2961,167 @@ components:
             properties:
               position: { type: integer }
               correct: { type: boolean }
-              solution: { type: string }
+              stem: { type: string }
+              correctAnswer: { type: string, description: Inline LaTeX allowed. }
+              solution: { type: [string, 'null'] }
         recommendation:
           type: object
-          description: Output of the gap router.
+          description: |
+            Output of the gap router (architecture §5.2), stored with the attempt.
+            `prerequisite_review` names the prerequisite to check with a `review`
+            attempt; `continue` names the next topic (or the topic to return to
+            after a passed check); `take_break` means the detour limits were
+            reached and the parent is told in their report.
+          required: [action, topicId]
           properties:
             action: { type: string, enum: [continue, retry_practice, prerequisite_review, take_break] }
-            topicId: { $ref: '#/components/schemas/Id' }
-            message: { type: string }
+            topicId: { type: ['string', 'null'], format: uuid }
+            topicTitle: { type: ['string', 'null'] }
+            reason:
+              type: string
+              description: |
+                Stable code: no_weak_prerequisite, not_mastered, low_mastery, stale,
+                needs_review, max_depth, max_per_day, gap_refreshed,
+                gap_added_to_path, review_passed, review_failed.
+        reward:
+          $ref: '#/components/schemas/Reward'
+          description: What submitting earned (mastery or review XP, the "finish a set" quest).
+
+    Reward:
+      type: object
+      description: |
+        XP, badges and quests that one answer or submission earned, for the
+        "+10 XP" on screen. Codes are stable; the app shows them in the
+        learner's language.
+      required: [xp, badges, questsCompleted]
+      properties:
+        xp: { type: integer, minimum: 0, description: Includes XP from quests finished by this event. }
+        badges: { type: array, items: { type: string } }
+        questsCompleted:
+          type: array
+          items:
+            type: object
+            required: [code, target]
+            properties:
+              code: { type: string }
+              target: { type: integer, description: 'For the name, such as "Earn 50 XP".' }
+
+    TopicAssessmentStatus:
+      type: object
+      required: [topicId, questionCount, practice, mastery, dailyExercisesLeft]
+      properties:
+        topicId: { $ref: '#/components/schemas/Id' }
+        questionCount: { type: integer, description: Published question templates on the topic. }
+        practice:
+          type: object
+          required: [correct, required, openAttemptId]
+          properties:
+            correct: { type: integer, description: Practice answers right so far, over all sets. }
+            required: { type: integer, description: Needed before the mastery test unlocks. }
+            openAttemptId: { type: ['string', 'null'], format: uuid }
+        mastery:
+          type: object
+          required: [unlocked, openAttemptId, best]
+          properties:
+            unlocked: { type: boolean }
+            openAttemptId: { type: ['string', 'null'], format: uuid }
+            best:
+              type: ['object', 'null']
+              properties:
+                score: { type: number }
+                maxScore: { type: number }
+                passed: { type: boolean }
+                submittedAt: { type: string, format: date-time }
+        dailyExercisesLeft:
+          type: ['integer', 'null']
+          description: Practice answers left today on the free plan (Tashkent day); null with a paid plan.
 
     GamificationSummary:
       type: object
-      required: [xpTotal, level, levelProgress, streak, badges, quests]
+      description: |
+        Badge and quest codes are stable; the app shows their names in the
+        learner's language. XP comes only from server results (PRD §8): a
+        practice answer right on the first try, a passed mastery test (once per
+        topic), a passed review and a finished daily quest.
+      required: [xpTotal, level, levelProgress, xpLeftToday, streak, badges, quests]
       properties:
         xpTotal: { type: integer }
-        level: { type: integer }
-        levelProgress: { type: number, minimum: 0, maximum: 1 }
+        level: { type: integer, minimum: 1 }
+        levelProgress: { type: number, minimum: 0, maximum: 1, description: Share of the way to the next level. }
+        xpLeftToday:
+          type: integer
+          description: XP left before today's cap (Tashkent day). Mastery and quest XP are not capped.
         streak:
           type: object
+          required: [current, longest, freezesLeft, activeToday]
           properties:
-            current: { type: integer }
+            current: { type: integer, description: 0 once the missed days outnumber the freezes. }
             longest: { type: integer }
-            freezesLeft: { type: integer }
+            freezesLeft: { type: integer, description: Earned by streak days, never bought. }
             activeToday: { type: boolean }
         badges:
           type: array
           items:
             type: object
+            required: [code, awardedAt]
             properties:
-              code: { type: string }
-              title: { type: string }
+              code:
+                type: string
+                enum: [first_correct, streak_3, streak_7, streak_30, mastery_1, mastery_5, mastery_10, level_5, level_10, quests_10]
               awardedAt: { type: string, format: date-time }
         quests:
           type: array
+          description: Today's quests from config/gamification.yaml.
           items:
             type: object
+            required: [code, progress, target, completed]
             properties:
               code: { type: string }
-              title: { type: string }
               progress: { type: integer }
               target: { type: integer }
               completed: { type: boolean }
 
     League:
       type: object
-      required: [weekStart, tier, endsAt, standings]
+      description: |
+        The caller's league this week (Monday to Sunday, Tashkent time). Only
+        children whose parent gave the `leaderboard` consent take part; others
+        get `status: off`. Standings show a moderated nickname, or the first
+        name and last initial, plus the avatar code, and never a full name
+        (C-26). A learner joins with their first XP of the week.
+      required: [status, weekStart, endsAt, tier, tiers, zones, standings, lastWeek]
       properties:
+        status: { type: string, enum: [active, not_joined, 'off'] }
         weekStart: { type: string, format: date }
-        tier: { type: integer }
         endsAt: { type: string, format: date-time }
+        tier: { type: integer, minimum: 1, description: 1 is the lowest tier. }
+        tiers: { type: integer }
+        zones:
+          type: object
+          description: How many places move up and down; smaller in a small league.
+          required: [up, down]
+          properties:
+            up: { type: integer }
+            down: { type: integer }
         standings:
           type: array
           items:
             type: object
-            required: [rank, nickname, weeklyXp, isMe]
+            required: [rank, nickname, avatarCode, weeklyXp, isMe]
+            additionalProperties: false
             properties:
               rank: { type: integer }
               nickname: { type: string, description: Never the child's full name. }
-              avatarCode: { type: string }
+              avatarCode: { type: ['string', 'null'] }
               weeklyXp: { type: integer }
               isMe: { type: boolean }
+        lastWeek:
+          type: ['object', 'null']
+          required: [tier, rank, outcome]
+          properties:
+            tier: { type: integer }
+            rank: { type: integer }
+            outcome: { type: string, enum: [promoted, stayed, demoted] }
 
     PaymentProviderCode:
       type: string
@@ -2455,6 +3141,66 @@ components:
         features:
           type: array
           items: { type: string }
+
+    Refund:
+      type: object
+      required: [refundId, paymentId, status, amount, reason, requestedBy, failure, createdAt, completedAt]
+      properties:
+        refundId: { $ref: '#/components/schemas/Id' }
+        paymentId: { $ref: '#/components/schemas/Id' }
+        status: { type: string, enum: [requested, succeeded, failed] }
+        amount: { $ref: '#/components/schemas/Money' }
+        reason: { type: string }
+        requestedBy:
+          type: [string, 'null']
+          format: uuid
+          description: The admin; null when the provider started the refund (Payme cabinet).
+        failure: { type: [string, 'null'], description: The provider's reason when it refused. }
+        createdAt: { type: string, format: date-time }
+        completedAt: { type: [string, 'null'], format: date-time }
+
+    AdminPayment:
+      type: object
+      required:
+        [id, orderId, provider, providerTxnId, amount, status, planCode, owner, createdAt, paidAt, cancelledAt, refunds]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        orderId: { $ref: '#/components/schemas/Id' }
+        provider: { type: string, enum: [payme, click] }
+        providerTxnId: { type: string }
+        amount: { $ref: '#/components/schemas/Money' }
+        status: { type: string, enum: [pending, paid, cancelled, refunded, partially_refunded, failed] }
+        planCode: { type: string }
+        owner:
+          type: object
+          required: [id, firstName, phoneMasked]
+          properties:
+            id: { $ref: '#/components/schemas/Id' }
+            firstName: { type: string }
+            phoneMasked: { type: [string, 'null'] }
+        createdAt: { type: string, format: date-time }
+        paidAt: { type: [string, 'null'], format: date-time }
+        cancelledAt: { type: [string, 'null'], format: date-time }
+        refunds:
+          type: array
+          items: { $ref: '#/components/schemas/Refund' }
+
+    PromoCode:
+      type: object
+      required:
+        [id, code, discountType, value, planCodes, maxRedemptions, perUserLimit, validFrom, validTo, isActive, redemptions]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        code: { type: string }
+        discountType: { type: string, enum: [percent, fixed] }
+        value: { type: integer, description: Percent, or tiyin for a fixed discount. }
+        planCodes: { type: [array, 'null'], items: { type: string } }
+        maxRedemptions: { type: [integer, 'null'] }
+        perUserLimit: { type: integer }
+        validFrom: { type: string, format: date-time }
+        validTo: { type: string, format: date-time }
+        isActive: { type: boolean }
+        redemptions: { type: integer, description: Paid orders that used the code. }
 
     Subscription:
       type: object
@@ -2518,24 +3264,50 @@ components:
 
     WeeklyReport:
       type: object
-      required: [studentId, weekStart, minutesActive, topicsMastered, highlights, concerns]
+      description: |
+        A Tashkent week (Monday to Sunday). Facts and stable codes only: the app
+        writes the summary in the reader's language. Minutes are estimated from
+        questions (showing to answering, at most 5 minutes each); lesson videos
+        are not counted yet.
+      required:
+        [studentId, weekStart, weekEnd, minutesByDay, minutesActive, minutesLastWeek, daysActive,
+         questionsAnswered, rightFirstTime, xpEarned, streak, topicsMastered, concerns]
       properties:
         studentId: { $ref: '#/components/schemas/Id' }
         weekStart: { type: string, format: date }
+        weekEnd: { type: string, format: date }
+        minutesByDay:
+          type: array
+          minItems: 7
+          maxItems: 7
+          description: Monday to Sunday.
+          items: { type: integer }
         minutesActive: { type: integer }
+        minutesLastWeek: { type: integer }
         daysActive: { type: integer }
+        questionsAnswered: { type: integer }
+        rightFirstTime: { type: integer, description: Answered right on the first try. }
+        xpEarned: { type: integer }
+        streak: { type: integer, description: The current streak; 0 in a past week's report. }
         topicsMastered:
           type: array
-          items: { type: string }
-        highlights:
-          type: array
-          items: { type: string }
+          items:
+            type: object
+            required: [topicId, title]
+            properties:
+              topicId: { $ref: '#/components/schemas/Id' }
+              title: { type: string }
         concerns:
           type: array
-          items: { type: string }
-        suggestedNextSteps:
-          type: array
-          items: { type: string }
+          maxItems: 3
+          description: What needs attention, most useful first.
+          items:
+            type: object
+            required: [topicId, title, reason]
+            properties:
+              topicId: { $ref: '#/components/schemas/Id' }
+              title: { type: string }
+              reason: { type: string, enum: [gap_found, mastery_not_passed, review_due] }
 
     ContentStatus:
       type: string
@@ -2603,28 +3375,177 @@ components:
 
     QuestionTemplateInput:
       type: object
-      description: See docs/database-schema.md §4.2 for the full body format.
-      required: [type, difficulty, variables, stem, answer]
+      required: [type, difficulty, body]
+      additionalProperties: false
       properties:
-        type: { $ref: '#/components/schemas/QuestionType' }
+        type:
+          type: string
+          enum: [numeric, single_choice, multiple_choice]
+          description: The types the engine generates today; formula, matching and ordering come later.
         difficulty: { type: integer, minimum: 1, maximum: 5 }
         skills:
           type: array
-          items: { type: string }
-        variables: { type: object }
+          maxItems: 10
+          items: { type: string, pattern: '^[a-z][a-z0-9_]{0,39}$' }
+        externalRef: { type: string, maxLength: 64, description: The author's own label. }
+        body: { $ref: '#/components/schemas/QuestionTemplateBody' }
+
+    QuestionTemplateBody:
+      type: object
+      description: >
+        Server-only template body (docs/database-schema.md §4.2). Expressions use
+        the engine's language: numbers, variables, + - * / ^, comparisons, && || !,
+        and the functions abs, floor, ceil, round, min, max, gcd, lcm, mod,
+        numerator and denominator. Arithmetic is exact (fractions, not floats).
+        `{expression}` in a text is replaced by its value.
+      required: [stem, answer]
+      additionalProperties: false
+      properties:
+        variables:
+          type: object
+          description: 'In order; each may use the ones before it. `{"int": [lo, hi]}`, `{"choice": [...]}` or `{"expr": "..."}`.'
+          additionalProperties: { type: object }
         constraints:
           type: array
-          items: { type: string, maxLength: 200 }
+          maxItems: 20
+          items: { type: string, maxLength: 300 }
         stem: { $ref: '#/components/schemas/LocalizedText' }
-        answer: { type: object }
-        choices: { type: array, items: { type: object } }
+        answer:
+          type: object
+          description: >
+            `number` (expr, decimals), `fraction` (expr, accept, requireSimplified),
+            `choice` (expr, display; with distractors) or `choices` (listed options
+            with `correct`).
+          required: [kind]
+          properties:
+            kind: { type: string, enum: [number, fraction, choice, choices] }
         distractors:
           type: array
-          items: { type: string }
+          maxItems: 7
+          items: { type: string, maxLength: 300 }
         hints:
           type: array
+          maxItems: 5
           items: { $ref: '#/components/schemas/LocalizedText' }
         solution: { $ref: '#/components/schemas/LocalizedText' }
+
+    QuestionTemplateVersion:
+      allOf:
+        - $ref: '#/components/schemas/ContentVersionSummary'
+        - $ref: '#/components/schemas/QuestionTemplateInput'
+        - type: object
+          required: [templateId, topicId, etag]
+          properties:
+            templateId: { $ref: '#/components/schemas/Id' }
+            topicId: { $ref: '#/components/schemas/Id' }
+            etag: { type: string }
+            reviews:
+              type: array
+              items:
+                type: object
+                properties:
+                  reviewerId: { $ref: '#/components/schemas/Id' }
+                  decision: { type: string }
+                  comments: { type: array, items: { type: object } }
+                  createdAt: { type: string, format: date-time }
+
+    QuestionTemplateSummary:
+      type: object
+      required: [id, latest]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        externalRef: { type: [string, 'null'] }
+        publishedVersionId: { oneOf: [{ $ref: '#/components/schemas/Id' }, { type: 'null' }] }
+        latest:
+          allOf:
+            - $ref: '#/components/schemas/ContentVersionSummary'
+            - type: object
+              properties:
+                type: { $ref: '#/components/schemas/QuestionType' }
+                difficulty: { type: integer }
+                stem: { $ref: '#/components/schemas/LocalizedText' }
+
+    StudioTree:
+      type: object
+      required: [tracks]
+      properties:
+        tracks:
+          type: array
+          items:
+            type: object
+            required: [id, slug, title, courses]
+            properties:
+              id: { $ref: '#/components/schemas/Id' }
+              slug: { type: string }
+              title: { $ref: '#/components/schemas/LocalizedText' }
+              courses:
+                type: array
+                items:
+                  type: object
+                  required: [id, slug, title, grade, status, chapters]
+                  properties:
+                    id: { $ref: '#/components/schemas/Id' }
+                    slug: { type: string }
+                    title: { $ref: '#/components/schemas/LocalizedText' }
+                    grade: { type: [integer, 'null'] }
+                    status: { type: string, enum: [draft, published, archived] }
+                    chapters:
+                      type: array
+                      items:
+                        type: object
+                        required: [id, slug, title, status, topics]
+                        properties:
+                          id: { $ref: '#/components/schemas/Id' }
+                          slug: { type: string }
+                          title: { $ref: '#/components/schemas/LocalizedText' }
+                          status: { type: string, enum: [draft, published, archived] }
+                          topics:
+                            type: array
+                            items:
+                              type: object
+                              required: [id, slug, isFree, publishedVersionId, title, latest]
+                              properties:
+                                id: { $ref: '#/components/schemas/Id' }
+                                slug: { type: string }
+                                isFree: { type: boolean }
+                                publishedVersionId: { oneOf: [{ $ref: '#/components/schemas/Id' }, { type: 'null' }] }
+                                title: { $ref: '#/components/schemas/LocalizedText' }
+                                latest:
+                                  oneOf:
+                                    - type: 'null'
+                                    - type: object
+                                      required: [id, versionNo, status]
+                                      properties:
+                                        id: { $ref: '#/components/schemas/Id' }
+                                        versionNo: { type: integer }
+                                        status: { $ref: '#/components/schemas/ContentStatus' }
+
+    MediaAsset:
+      type: object
+      required: [id, kind, status, contentType, sizeBytes, locale, videoId, durationS, renditions, error, previewUrl]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        kind: { type: string, enum: [video, image, subtitle] }
+        status: { type: string, enum: [awaiting_upload, uploaded, processing, ready, failed] }
+        contentType: { type: string }
+        sizeBytes: { type: integer }
+        locale: { oneOf: [{ $ref: '#/components/schemas/Locale' }, { type: 'null' }] }
+        videoId: { oneOf: [{ $ref: '#/components/schemas/Id' }, { type: 'null' }] }
+        durationS: { type: [integer, 'null'] }
+        renditions:
+          type: array
+          items:
+            type: object
+            required: [name, height, bandwidth]
+            properties:
+              name: { type: string, examples: ['360p', 'audio'] }
+              height: { type: [integer, 'null'], description: null for the audio-only fallback }
+              bandwidth: { type: integer }
+        error: { type: [string, 'null'], description: Why a failed upload or transcode was refused. }
+        previewUrl:
+          type: [string, 'null']
+          format: uri
+          description: Short-lived download URL for a ready image or subtitle.
 
     AdminUser:
       type: object
@@ -2643,23 +3564,58 @@ components:
         createdAt: { type: string, format: date-time }
         lastLoginAt: { type: [string, 'null'], format: date-time }
 
+    Readiness:
+      type: object
+      required: [status, checks]
+      properties:
+        status: { type: string, enum: [ok, down] }
+        checks:
+          type: object
+          required: [database, redis]
+          properties:
+            database: { type: string, enum: [ok, down] }
+            redis: { type: string, enum: [ok, down, not_configured] }
+
+    ManagedRole:
+      type: string
+      description: Roles an admin grants in the studio; student and parent come from sign-up.
+      enum: [teacher, author, reviewer, admin, support]
+
     RiskReview:
       type: object
-      required: [id, subjectUserId, reason, status, createdAt]
+      required: [id, subjectUserId, reason, status, createdAt, decidedAt, notes, subject, signals]
       properties:
         id: { $ref: '#/components/schemas/Id' }
         subjectUserId: { $ref: '#/components/schemas/Id' }
         reason: { type: string }
+        subject:
+          type: object
+          description: The flagged account, with the phone masked.
+          required: [firstName, phoneMasked, status, riskLevel, createdAt]
+          properties:
+            firstName: { type: string }
+            phoneMasked: { type: [string, 'null'] }
+            status: { type: string }
+            riskLevel: { type: string }
+            createdAt: { type: string, format: date-time }
         signals:
           type: array
+          description: The account's latest risk events (up to 10), newest first.
           items:
             type: object
+            required: [type, scoreDelta, names, at]
             properties:
-              type: { type: string }
+              type: { type: string, examples: ['login.block_and_review'] }
               scoreDelta: { type: integer }
+              names:
+                type: array
+                description: The rules that scored, as named in config/risk.yaml.
+                items: { type: string }
               at: { type: string, format: date-time }
         status: { type: string, enum: [open, cleared, restricted, banned] }
         createdAt: { type: string, format: date-time }
+        decidedAt: { type: [string, 'null'], format: date-time }
+        notes: { type: [string, 'null'] }
 
     AuditEntry:
       type: object
@@ -2667,6 +3623,9 @@ components:
       properties:
         id: { $ref: '#/components/schemas/Id' }
         actorId: { type: [string, 'null'], format: uuid }
+        actorRoles:
+          type: array
+          items: { type: string }
         action: { type: string }
         targetType: { type: string }
         targetId: { type: [string, 'null'], format: uuid }

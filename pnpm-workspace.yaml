@@ -1,6 +1,7 @@
 packages:
   - apps/*
   - packages/*
+  - tests/*
 
 # Supply-chain hardening (security plan C-42): only these packages may run
 # install scripts. Everything else is installed without executing code.

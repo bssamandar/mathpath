@@ -85,6 +85,30 @@ describe('loadConfig', () => {
     expect(() => loadConfig(dir)).toThrow(/auth\.yaml[\s\S]*memoryKiB/);
   });
 
+  it('rejects a report SMS window that runs past 21:00', () => {
+    const dir = copyConfig();
+    replaceIn(dir, 'reports.yaml', "stopAt: '21:00'", "stopAt: '22:30'");
+    expect(() => loadConfig(dir)).toThrow(/no report SMS after 21:00/);
+  });
+
+  it('rejects a report SMS window that ends before it starts', () => {
+    const dir = copyConfig();
+    replaceIn(dir, 'reports.yaml', "sendAt: '19:00'", "sendAt: '20:30'");
+    replaceIn(dir, 'reports.yaml', "stopAt: '21:00'", "stopAt: '20:00'");
+    expect(() => loadConfig(dir)).toThrow(/sendAt must be before stopAt/);
+  });
+
+  it('rejects a video ladder that is not ordered from lowest to highest', () => {
+    const dir = copyConfig();
+    replaceIn(
+      dir,
+      'content.yaml',
+      '{ height: 360, videoKbps: 700 }',
+      '{ height: 200, videoKbps: 700 }',
+    );
+    expect(() => loadConfig(dir)).toThrow(/ladder heights must be strictly ascending/);
+  });
+
   it('reports every broken file at once', () => {
     const dir = copyConfig();
     replaceIn(dir, 'learning.yaml', 'masteryThreshold: 0.8', 'masteryThreshold: -1');

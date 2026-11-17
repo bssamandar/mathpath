@@ -30,12 +30,21 @@ export const learningSchema = z
         hintAfterMistakes: positiveInt,
         solutionAfterMistakes: positiveInt,
         minCorrectBeforeMasteryTest: positiveInt,
+        itemsPerSet: positiveInt.max(30),
       })
       .strict()
       .refine((p) => p.solutionAfterMistakes > p.hintAfterMistakes, {
         message: 'the full solution must come after the hint',
         path: ['solutionAfterMistakes'],
       }),
+    masteryTest: z.object({ items: positiveInt.max(40) }).strict(),
+    review: z
+      .object({
+        items: positiveInt.max(20),
+        // SM-2 starts every card at 2.5 and never lets the ease fall below 1.3.
+        initialEase: z.number().min(1.3).max(3),
+      })
+      .strict(),
     gapRouting: z
       .object({
         maxDepth: positiveInt,
@@ -77,6 +86,19 @@ export const billingSchema = z
       })
       .strict(),
     referral: z.object({ qualifyAfterActiveDays: positiveInt }).strict(),
+    // How long a parent has to pay an order before it expires.
+    orderExpiresMinutes: positiveInt.max(24 * 60),
+    // Fiscal receipt data sent to the provider (OFD). Optional until the
+    // product's IKPU code is registered; without it no receipt items are sent.
+    fiscal: z
+      .object({
+        ikpuCode: z.string().regex(/^\d{17}$/, 'IKPU codes have 17 digits'),
+        packageCode: z.string().min(1).max(20),
+        vatPercent: z.number().int().min(0).max(100),
+        title: z.string().min(1).max(128),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 
@@ -93,12 +115,40 @@ export const gamificationSchema = z
       .strict(),
     levels: z.object({ levelBase: positiveInt, levelExponent: z.number().min(1).max(3) }).strict(),
     streak: z.object({ freezeEveryDays: positiveInt, maxFreezes: nonNegativeInt }).strict(),
+    // Everyone gets the same quests each day; progress comes from server events only.
+    quests: z
+      .array(
+        z
+          .object({
+            code: z.string().regex(/^[a-z0-9_]{2,32}$/),
+            metric: z.enum(['first_try_correct', 'xp', 'sets_finished']),
+            target: positiveInt,
+          })
+          .strict(),
+      )
+      .max(5)
+      .refine(
+        (quests) => new Set(quests.map((q) => q.code)).size === quests.length,
+        'quest codes must be unique',
+      ),
     leagues: z
-      .object({ size: positiveInt, promoteTop: nonNegativeInt, demoteBottom: nonNegativeInt })
+      .object({
+        size: positiveInt,
+        promoteTop: nonNegativeInt,
+        demoteBottom: nonNegativeInt,
+        tiers: positiveInt.max(20),
+        gradeBands: z.array(z.number().int().min(1).max(11)).min(1).max(11),
+      })
       .strict()
       .refine(
         (l) => l.promoteTop + l.demoteBottom < l.size,
         'promotion and demotion zones must not overlap',
+      )
+      .refine(
+        (l) =>
+          l.gradeBands.every((g, i) => i === 0 || g > l.gradeBands[i - 1]!) &&
+          l.gradeBands.at(-1) === 11,
+        'grade bands must rise and end at grade 11',
       ),
     notifications: z.object({ quietHoursStart: clockTime, quietHoursEnd: clockTime }).strict(),
   })
@@ -116,6 +166,9 @@ export const limitsSchema = z
         loginFailuresPerAccount: window,
         loginFailuresPerIpPrefix: window,
         childPinFailures: window,
+        childLoginFailuresPerFamily: window,
+        accountLock: window,
+        promoChecksPerUser: window,
       })
       .strict(),
   })
@@ -137,8 +190,33 @@ export const riskSchema = z
         perDevice: window,
       })
       .strict(),
-    smsBudget: z.object({ dailyCapTiyin: positiveInt, alertRatio: fraction }).strict(),
-    signals: z.record(z.string(), nonNegativeInt),
+    smsBudget: z
+      .object({
+        hourlyCapTiyin: positiveInt,
+        dailyCapTiyin: positiveInt,
+        costPerSmsTiyin: positiveInt,
+        alertRatio: fraction,
+      })
+      .strict()
+      .refine(
+        (b) => b.hourlyCapTiyin <= b.dailyCapTiyin,
+        'hourly cap must not exceed the daily cap',
+      ),
+    // Every signal the scoring code knows, so a typo in a name is caught at start-up.
+    signals: z
+      .object({
+        ipIsDatacenterOrVpn: nonNegativeInt,
+        ipReputationBad: nonNegativeInt,
+        deviceOnManyAccounts: nonNegativeInt,
+        otpVelocityExceeded: nonNegativeInt,
+        disposableEmail: nonNegativeInt,
+        headlessOrEmulator: nonNegativeInt,
+        phonePrefixFlagged: nonNegativeInt,
+        newDeviceAndNewIpPrefix: nonNegativeInt,
+        failedLoginEach: nonNegativeInt,
+        failedLoginMax: nonNegativeInt,
+      })
+      .strict(),
     actions: z
       .array(z.object({ from: nonNegativeInt, action: riskAction }).strict())
       .min(1)
@@ -176,6 +254,20 @@ export const authSchema = z
       })
       .strict()
       .refine((p) => p.maxLength >= p.minLength, 'maxLength must be at least minLength'),
+    mfa: z
+      .object({
+        issuer: z.string().min(1).max(32),
+        recoveryCodeCount: z.number().int().min(5).max(20),
+        verifyFailures: window,
+        enrolmentTtlMinutes: z.number().int().min(1).max(60),
+      })
+      .strict(),
+    staffSession: z
+      .object({
+        absoluteHours: z.number().int().min(1).max(24),
+        idleMinutes: z.number().int().min(5).max(240),
+      })
+      .strict(),
   })
   .strict();
 
@@ -191,7 +283,31 @@ export const contentSchema = z
         z.enum(['single_choice', 'multiple_choice', 'numeric', 'formula', 'matching', 'ordering']),
       )
       .min(1),
-    video: z.object({ minDurationSeconds: positiveInt, maxDurationSeconds: positiveInt }).strict(),
+    video: z
+      .object({
+        minDurationSeconds: positiveInt,
+        maxDurationSeconds: positiveInt,
+        maxUploadBytes: positiveInt,
+        segmentSeconds: positiveInt,
+        // Renditions from lowest to highest; none is taller than the source.
+        ladder: z.array(z.object({ height: positiveInt, videoKbps: positiveInt }).strict()).min(1),
+        audioKbps: positiveInt,
+        // The audio-only fallback for very slow connections.
+        audioOnlyKbps: positiveInt,
+      })
+      .strict(),
+    media: z
+      .object({
+        uploadUrlTtlSeconds: positiveInt,
+        playbackTtlSeconds: positiveInt,
+        segmentUrlTtlSeconds: positiveInt,
+        keyRequestsPerMinute: positiveInt,
+        maxImageBytes: positiveInt,
+        maxSubtitleBytes: positiveInt,
+      })
+      .strict(),
+    // Four-eyes exception (C-18): an admin may approve their own version.
+    adminSelfReview: z.boolean(),
   })
   .strict()
   .refine((c) => c.uiLocales.includes(c.defaultLocale), {
@@ -201,7 +317,39 @@ export const contentSchema = z
   .refine((c) => c.video.maxDurationSeconds > c.video.minDurationSeconds, {
     message: 'maxDurationSeconds must be greater than minDurationSeconds',
     path: ['video'],
+  })
+  .refine((c) => isStrictlyAscending(c.video.ladder.map((r) => r.height)), {
+    message: 'ladder heights must be strictly ascending',
+    path: ['video', 'ladder'],
   });
+
+/**
+ * The Sunday-evening SMS report to parents (UX S11; step 7.4b). Sent by the
+ * worker; never after 21:00 Tashkent time, so families are not woken.
+ */
+export const reportsSchema = z
+  .object({
+    weeklySms: z
+      .object({
+        // subscribers: parents with a paid subscription; active_parents: every
+        // parent whose child practised; off: nothing is sent.
+        audience: z.enum(['subscribers', 'active_parents', 'off']),
+        sendAt: clockTime,
+        stopAt: clockTime,
+        maxPerRun: positiveInt,
+        concurrency: positiveInt.max(16),
+      })
+      .strict()
+      .refine((w) => w.sendAt < w.stopAt, {
+        message: 'sendAt must be before stopAt',
+        path: ['stopAt'],
+      })
+      .refine((w) => w.stopAt <= '21:00', {
+        message: 'no report SMS after 21:00',
+        path: ['stopAt'],
+      }),
+  })
+  .strict();
 
 /** Maps each config file name (without .yaml) to its schema. */
 export const configSchemas = {
@@ -212,6 +360,7 @@ export const configSchemas = {
   risk: riskSchema,
   content: contentSchema,
   auth: authSchema,
+  reports: reportsSchema,
 } as const;
 
 export type ConfigName = keyof typeof configSchemas;

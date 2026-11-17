@@ -21,7 +21,8 @@
     "services:up": "docker compose -f infra/docker-compose.yml up -d",
     "services:down": "docker compose -f infra/docker-compose.yml down",
     "prepare": "husky",
-    "db:migrate": "pnpm --filter @mathpath/db build && pnpm --filter @mathpath/db migrate latest"
+    "db:migrate": "pnpm --filter @mathpath/db build && pnpm --filter @mathpath/db migrate latest",
+    "db:seed": "pnpm --filter @mathpath/db build && pnpm --filter @mathpath/db migrate seed"
   },
   "devDependencies": {
     "@commitlint/cli": "19.8.1",

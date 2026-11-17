@@ -99,3 +99,20 @@ describe('route access declarations (C-09)', () => {
     expect([...used].filter((p) => !known.has(p))).toEqual([]);
   });
 });
+
+describe('league contract (C-26)', () => {
+  it('has no name fields in the standings, only a nickname', () => {
+    const schemas = (spec as unknown as { components: { schemas: Record<string, unknown> } })
+      .components.schemas;
+    const league = schemas.League as {
+      properties: {
+        standings: {
+          items: { properties: Record<string, unknown>; additionalProperties: boolean };
+        };
+      };
+    };
+    const row = league.properties.standings.items;
+    expect(row.additionalProperties).toBe(false);
+    expect(Object.keys(row.properties).filter((key) => /name/i.test(key))).toEqual(['nickname']);
+  });
+});

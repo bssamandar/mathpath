@@ -7,6 +7,8 @@
  * be replayed as another (a CSRF token).
  */
 import {
+  createCipheriv,
+  createDecipheriv,
   createHmac,
   createPrivateKey,
   createPublicKey,
@@ -19,10 +21,13 @@ import { Logger } from '@nestjs/common';
 import type { Env } from '../config/env';
 
 /** Everything an HMAC is used for. Adding a purpose derives a new, independent key. */
-export type HmacPurpose = 'otp' | 'csrf';
+export type HmacPurpose = 'otp' | 'csrf' | 'recovery' | 'media';
+
+/** Everything encrypted at rest with a derived key. */
+export type SealPurpose = 'mfa-secret';
 
 export class AuthKeys {
-  private readonly hmacKeys = new Map<HmacPurpose, Buffer>();
+  private readonly derived = new Map<string, Buffer>();
 
   /**
    * @param signingKey - Ed25519 private key for new tokens.
@@ -84,11 +89,44 @@ export class AuthKeys {
    * @returns The MAC, base64url-encoded.
    */
   hmac(purpose: HmacPurpose, data: string): string {
-    let key = this.hmacKeys.get(purpose);
+    return createHmac('sha256', this.derive(purpose)).update(data).digest('base64url');
+  }
+
+  /**
+   * Encrypts a secret for storage with AES-256-GCM (C-08: TOTP secrets are not
+   * stored in clear, so a database dump alone cannot produce staff codes).
+   * @returns IV (12 bytes) + tag (16 bytes) + ciphertext.
+   */
+  seal(purpose: SealPurpose, plaintext: Buffer): Buffer {
+    const iv = randomBytes(12);
+    const cipher = createCipheriv('aes-256-gcm', this.derive(`seal:${purpose}`), iv, {
+      authTagLength: 16,
+    });
+    const body = Buffer.concat([cipher.update(plaintext), cipher.final()]);
+    return Buffer.concat([iv, cipher.getAuthTag(), body]);
+  }
+
+  /** Reverses {@link seal}. @throws Error when the data was changed or sealed with another key. */
+  open(purpose: SealPurpose, sealed: Buffer): Buffer {
+    // A fixed tag length, so a cut-short value cannot pass with a shorter tag.
+    if (sealed.length < 28) throw new Error('sealed value is too short');
+    const decipher = createDecipheriv(
+      'aes-256-gcm',
+      this.derive(`seal:${purpose}`),
+      sealed.subarray(0, 12),
+      { authTagLength: 16 },
+    );
+    decipher.setAuthTag(sealed.subarray(12, 28));
+    return Buffer.concat([decipher.update(sealed.subarray(28)), decipher.final()]);
+  }
+
+  private derive(info: string): Buffer {
+    let key = this.derived.get(info);
     if (!key) {
-      key = Buffer.from(hkdfSync('sha256', this.hmacRoot, '', `mathpath:${purpose}`, 32));
-      this.hmacKeys.set(purpose, key);
+      // Existing HMAC keys keep their info string, so stored OTP hashes stay valid.
+      key = Buffer.from(hkdfSync('sha256', this.hmacRoot, '', `mathpath:${info}`, 32));
+      this.derived.set(info, key);
     }
-    return createHmac('sha256', key).update(data).digest('base64url');
+    return key;
   }
 }

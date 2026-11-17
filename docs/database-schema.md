@@ -286,6 +286,9 @@ UQ (course_id, slug).
 | published_at | timestamptz NULL | |
 | content_hash | text | SHA-256 of the canonical JSON. Published versions are **immutable**, enforced by a trigger |
 
+A partial unique index allows **one open version per topic** (`draft`, `in_review`,
+`changes_requested` or `approved`), so two authors cannot publish over each other.
+
 **topic_prerequisites** (knowledge graph)
 | Column | Type | Notes |
 |---|---|---|
@@ -331,24 +334,32 @@ map school topics ↔ Cambridge/SAT/entrance topics.
 
 ### 3.5 `media`
 
-**media_assets**
+**media_assets** (migration `2026111602_media`)
 | Column | Type | Notes |
 |---|---|---|
 | id | uuid PK | |
 | kind | text | `video`, `image`, `subtitle` |
-| locale | text NULL | For videos and subtitles |
-| source_key | text | Original upload in the private bucket |
-| status | text | `uploaded`, `processing`, `ready`, `failed` |
-| hls_manifest_key | text NULL | |
-| key_ref | text NULL | Reference to the AES key in the secret manager or key table |
+| locale | text NULL | Subtitles (required) and videos |
+| parent_id | uuid NULL FK → media_assets | The video a subtitle belongs to; only subtitles have one (CHECK) |
+| content_type | text | Declared at upload; checked against the stored object |
+| size_bytes | bigint | Declared at upload; signed into the upload URL |
+| source_key | text UNIQUE | Original upload in the private bucket (`sources/{id}`) |
+| status | text | `awaiting_upload`, `uploaded`, `processing`, `ready`, `failed` |
+| hls_manifest_key | text NULL | `hls/{id}/master.m3u8`; a ready video must have it and a duration (CHECK) |
 | duration_s | integer NULL | |
-| renditions | jsonb NULL | Available resolutions and bitrates |
-| uploaded_by | uuid | |
+| renditions | jsonb NULL | `[{name, height, bandwidth}]`; `height` is null for the audio-only fallback |
+| error | text NULL | Why an upload or transcode was refused |
+| uploaded_by | uuid FK → users | |
 | created_at, updated_at | | |
 
-**media_keys**: `media_id PK`, `key bytea (enc)`, `iv bytea`, `rotated_at`.
-These are AES-128 keys for HLS, encrypted at rest with a master key from the
-secret manager.
+The `key_ref` column planned earlier is not needed: the key row is found by `media_id`.
+
+**media_keys**: `media_id PK FK`, `sealed_key bytea` (44 bytes: IV + GCM tag +
+key), `iv bytea` (16 bytes, the HLS IV, not secret), `created_at`,
+`rotated_at`. The AES-128 key of each video is sealed with AES-256-GCM under
+a key derived from `MEDIA_KEY_SECRET`, with the media ID as associated data,
+so neither a database dump nor a copied row decrypts a video. Re-transcoding
+a video replaces its key and sets `rotated_at`.
 
 ### 3.6 `learning`
 
@@ -384,6 +395,23 @@ latest path per (user, course) is current (`is_current boolean`, partial UQ).
 | topic_id | uuid NULL | |
 | payload | jsonb | For example `{fromTopic, toTopic, rule, mastery}` for `gap_routed` |
 | created_at | timestamptz | |
+
+> **Implementation note (step 6.4c, migration `2026111702_learning`):**
+> `topic_progress` is built as above except `topic_version_id` (topics are not
+> versioned per learner yet); `ease` is checked between 1.30 and 3.00 and the
+> review queue uses a partial index on `(user_id, next_review_at)`.
+> `learning_paths` is **not** stored: the path is computed on read from
+> `topic_progress` and the prerequisite graph (due reviews first, then a
+> topological order without mastered topics), because it changes after every
+> attempt and a stored copy would go stale. A new table, **learning_detours**
+> (`from_topic_id`, `to_topic_id`, `depth ≥ 1`, `status` open / refreshed /
+> added_to_path / closed, `resolved_at` set exactly when not open), records the
+> gap router's open detours so a review knows it is a gap check and the daily
+> and depth limits can be counted. `learning_events` starts as a plain table
+> with a type check; partitioning comes with the retention job. `attempts`
+> gains `recommendation jsonb`, the stored output of the gap router. A trigger
+> on `topic_prerequisites` refuses an edge that would create a cycle, so the
+> graph stays a DAG whichever tool writes it.
 
 ### 3.7 `assessment`
 
@@ -436,6 +464,22 @@ latest path per (user, course) is current (`is_current boolean`, partial UQ).
 `minutes_active`. Enforces the free-tier daily limit and the parent's time limit.
 Hot counters live in Redis and are flushed here.
 
+> **Implementation note (step 6.4b, migration `2026111701_assessment`):**
+>
+> - `assessments` rows for topic practice and mastery are created on first use;
+>   an empty `blueprint` means "use config/learning.yaml", so a config change
+>   applies without rewriting rows.
+> - `attempts` adds `topic_id` (for the topic status query) and a partial
+>   unique index: one `in_progress` attempt per learner and assessment, so a
+>   second start resumes the open one.
+> - `attempt_items` adds `seed`, `feedback` (hints and solution for this
+>   item's numbers, server-only like `answer_key`), and `last_request_key` /
+>   `last_result` so a retried answer with the same Idempotency-Key is not
+>   counted twice. It starts as a plain table, like `audit_log`.
+> - `daily_usage` is updated directly in PostgreSQL with a conditional
+>   upsert (`exercises_count < limit`), which is atomic; Redis counters can
+>   come later if this becomes hot. Days are Tashkent days (UTC+5).
+
 ### 3.8 `gamification`
 
 **xp_ledger** (partitioned monthly)
@@ -459,10 +503,42 @@ Hot counters live in Redis and are flushed here.
 **quests**: `id`, `code`, `day date`, `definition jsonb`; UQ (code, day).
 **user_quests**: PK (`user_id`, `quest_id`), `progress`, `completed_at NULL`.
 
+> **Implementation note (step 6.6a, migration `2026111901_gamification`):**
+>
+> - `xp_ledger` is not partitioned yet; an index on (`user_id`, `day`) is
+>   enough at MVP volume. `day` is the Tashkent day, for the daily cap, and
+>   `source_id` is text (a quest's source is `YYYY-MM-DD:code`). The id alone
+>   is the primary key; partitioning is a later migration.
+> - The badge catalogue is code (`apps/api/src/gamification/rules.ts`), and
+>   `user_badges` stores `badge_code`; names are in the apps' dictionaries.
+>   A `badges` table becomes worth it when staff create badges themselves.
+> - Quests come from `config/gamification.yaml` (`quests`), the same for
+>   everyone each day, so there is no `quests` table. `user_quests` is keyed
+>   (`user_id`, `day`, `code`) and a row is made when first needed; a CHECK
+>   keeps `completed_at` set exactly when `progress >= target`.
+> - `attempts.reward jsonb` keeps what a submission earned, so a repeated
+>   submit shows the same "+XP"; a practice answer keeps it in `last_result`.
+> - XP is written in the same transaction as the result, not through the
+>   outbox (architecture §4): the unique ledger key already makes it exactly
+>   once, and the learner sees "+XP" in the same response.
+
 **leagues**: `id`, `week_start date`, `tier smallint`, `cohort smallint`
 (groups of ~30, grade-banded so children compete with peers).
 **league_members**: PK (`league_id`, `user_id`), `weekly_xp`, `final_rank NULL`.
 Live rankings are in Redis sorted sets, and this table holds the result.
+
+> **Implementation note (step 6.6b, migration `2026111902_leagues`):**
+>
+> - Weekly XP is kept in `league_members.weekly_xp`, not in Redis sorted sets:
+>   a league has about 30 rows, so PostgreSQL ranks them cheaply and there is
+>   no second store to keep in step. Redis becomes worth it for global
+>   leaderboards, which the MVP does not have.
+> - `leagues` adds `band` (grade band index from `leagues.gradeBands`) and
+>   `closed_at`; `week_start` must be a Monday (CHECK). `league_members` adds
+>   `week_start` with UQ (`user_id`, `week_start`), so a learner is in one
+>   league a week, `joined_at` (ties go to who joined first) and `outcome`.
+> - `user_stats.league_tier` is the tier a learner joins next week; the
+>   worker's Monday close (`closeFinishedLeagues`) sets it.
 
 ### 3.9 `certificates`
 
@@ -541,8 +617,18 @@ children covered.
 | cancel_reason | text NULL | |
 
 **refunds**: `id`, `payment_id` FK, `amount_tiyin`, `status`
-(`requested`,`succeeded`,`failed`), `reason`, `requested_by` (admin),
-`provider_ref`, `created_at`.
+(`requested`,`succeeded`,`failed`), `reason`, `requested_by` (admin; NULL when
+the provider started the refund, such as a Payme cabinet cancel),
+`idempotency_key` UQ NULL, `provider_ref`, `failure` (set exactly when failed),
+`created_at`, `completed_at` (NULL exactly while requested). At most one
+requested or succeeded refund per payment (partial unique index): the providers
+refund whole payments only.
+
+**report_sms_log**: PK (`parent_id`, `week_start`), `status`
+(`sending`,`sent`,`failed`), `children` (how many were in the message),
+`failure` (set exactly when failed), `created_at`, `finished_at` (NULL exactly
+while sending). Written before the Sunday report SMS goes out, so a parent gets
+at most one per week; no phone number is stored here.
 
 **payment_callbacks**: a raw log of every provider call.
 | Column | Type | Notes |
@@ -569,6 +655,35 @@ account, device and card" in the database itself.
 (`pending`,`qualified`,`rewarded`,`rejected`), `qualified_at`, `reward_ref`.
 The reward is granted only after the referred account is verified and active
 for N days (config).
+
+> **Implementation note (step 6.5a, migration `2026111801_billing`):** built so
+> far are `orders`, `subscriptions`, `subscription_members`, `payments` and
+> `payment_callbacks`. `orders` also stores `plan_interval`, `student_ids uuid[]`
+> (the children the parent chose, so fulfilment needs nothing from the request),
+> `provider`, `return_url` and `paid_at` (checked: set exactly when paid);
+> `promo_code_id` waits for promo codes. `subscriptions` has `order_id` (unique
+> when set, so one order makes one subscription) and no `payment_method_id` yet.
+> `payments.cancel_reason` is a `smallint` holding the provider's reason code
+> (Payme sends 1–10; 4 is our 12-hour timeout), and a partial unique index
+> allows one `pending` or `paid` payment per order. The forward-only rule is the
+> trigger `payments_forward_only`: pending → paid, cancelled or failed; paid →
+> refunded or partially refunded; partially refunded → refunded. All money is
+> `bigint` tiyin with positive checks. `payment_methods`, `refunds`,
+> `promo_codes`, `promo_redemptions`, `trials` and `referrals` come with saved
+> cards, admin refunds and step 6.5c.
+>
+> Step 6.5b (migration `2026111802_payment_refs`) adds `payments.merchant_ref`,
+> a unique `bigint` identity: Click wants an integer for our side of a payment
+> (`merchant_prepare_id`, `merchant_confirm_id`), and payment IDs are UUIDs.
+>
+> Step 6.5c (migration `2026111803_promo_trials`) adds `promo_codes` (code
+> stored upper-case in `text` with a format check instead of `citext`;
+> percent ≤ 100; `valid_to > valid_from`), `promo_redemptions` (written when
+> the order is paid, not at checkout), `orders.promo_code_id`, and `trials`
+> with `owner_id` unique and `device_hash` (SHA-256 of the device token)
+> unique when present. `card_fingerprint` waits for saved cards. A trial is a
+> `subscriptions` row with `plan_code = 'trial'`, `price_tiyin = 0` and no
+> order; a child who was in one cannot get another.
 
 ### 3.11 `classroom`
 
@@ -667,9 +782,20 @@ These shapes are validated with Zod schemas in `packages/question-engine` and
 }
 ```
 
-Expressions are evaluated by a **sandboxed expression evaluator** (a math.js
-instance with a restricted function list). There is no `eval`, and authors can't
-run arbitrary code.
+Expressions are evaluated by the **sandboxed expression engine** in
+`@mathpath/questions` (ADR-0011): exact fractions, a fixed grammar and a fixed
+function list (`abs`, `floor`, `ceil`, `round`, `min`, `max`, `gcd`, `lcm`,
+`mod`, `numerator`, `denominator`). There is no `eval`, and authors can't run
+arbitrary code. Variables may read each other in any order the author writes
+them; the engine sorts them by what they read (jsonb does not keep key order).
+`{expression}` in a text is replaced by its value, so `\\frac{{a}}{{d}}` becomes
+`\\frac{3}{7}`.
+
+Answer kinds: `number` (`expr`, optional `decimals` for values that do not end),
+`fraction` (`expr`, `accept`: `equivalent` / `mixed_number` / `decimal`,
+`requireSimplified`), `choice` (a generated single choice from `expr` and
+`distractors`) and `choices` (listed options with `correct`). The engine
+generates `numeric`, `single_choice` and `multiple_choice` today.
 
 ---
 

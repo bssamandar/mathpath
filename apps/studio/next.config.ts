@@ -1,10 +1,9 @@
+import path from 'node:path';
 import type { NextConfig } from 'next';
 
 /**
- * Security headers (security plan C-15).
- * The Content-Security-Policy with per-request nonces is added in middleware
- * together with the first real pages, because Next.js needs the nonce on its
- * own inline scripts.
+ * Security headers (security plan C-15). The Content-Security-Policy is set in
+ * middleware.ts, because it carries a per-request nonce.
  */
 const securityHeaders = [
   { key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' },
@@ -15,11 +14,36 @@ const securityHeaders = [
   { key: 'Cross-Origin-Opener-Policy', value: 'same-origin' },
 ];
 
+/**
+ * The browser calls /api on the web origin, so the session cookies stay
+ * first-party (`__Host-` cookies cannot be shared across hosts) and no CORS is
+ * needed. In production the edge proxy routes /api straight to the API, so
+ * web and mobile requests reach it through the same number of proxies and the
+ * client IP is read the same way (TRUST_PROXY_HOPS). Locally, Next.js forwards
+ * /api itself; set API_ORIGIN to do the same elsewhere.
+ */
+const apiOrigin =
+  process.env.API_ORIGIN ??
+  (process.env.NODE_ENV === 'production' ? null : 'http://localhost:4000');
+
+/**
+ * Production images run the self-contained server Next.js traces into
+ * .next/standalone (infra/docker/next.Dockerfile sets NEXT_OUTPUT). Local runs
+ * keep `next start`, which does not work with standalone output.
+ */
+const standalone = process.env.NEXT_OUTPUT === 'standalone';
+
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  ...(standalone
+    ? { output: 'standalone', outputFileTracingRoot: path.join(__dirname, '..', '..') }
+    : {}),
   reactStrictMode: true,
   async headers() {
     return [{ source: '/:path*', headers: securityHeaders }];
+  },
+  async rewrites() {
+    return apiOrigin ? [{ source: '/api/:path*', destination: `${apiOrigin}/api/:path*` }] : [];
   },
 };
 

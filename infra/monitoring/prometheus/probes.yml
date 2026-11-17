@@ -1,0 +1,6 @@
+# The public URLs to check from outside. Replace the domain before launch
+# (docs/guides/launch-checklist.md); Prometheus reloads this file by itself.
+- targets:
+    - https://mathpath.example/api/v1/health
+    - https://mathpath.example/
+    - https://studio.mathpath.example/login

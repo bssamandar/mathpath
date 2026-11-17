@@ -1,0 +1,183 @@
+# MathPath edge proxy (architecture §2; security plan C-15, C-19, C-35).
+#
+#   {$DOMAIN}          web PWA, and /api straight to the API
+#   studio.{$DOMAIN}   studio for authors and admins, and its /api
+#   media.{$DOMAIN}    object storage for presigned uploads and HLS segments
+#                      (a separate cookieless host, C-19)
+#
+# Certificates come from Let's Encrypt automatically; DNS for all three names
+# must point at this server before the first start (docs/guides/deploy.md).
+# Never routed: the metrics ports (9464, 9465) and /api/v1/health/ready.
+
+{
+	email {$ACME_EMAIL}
+	order coraza_waf first
+	order rate_limit before basic_auth
+	# HTTP metrics for Prometheus, served on :9180 below (private network only).
+	metrics
+	servers {
+		# Seconds a slow client may take to send headers or a body.
+		timeouts {
+			read_header 10s
+			read_body 60s
+			idle 2m
+		}
+	}
+}
+
+# ── Shared pieces ────────────────────────────────────────────
+
+# Access logs as JSON on stdout (collected by Alloy into Loki). Query strings
+# can carry phone numbers, playback tokens and URL signatures, so they are cut
+# off; client IPs are reduced to their network, as in the API's own logs (C-34).
+# Caddy already redacts Cookie, Set-Cookie and Authorization headers.
+(access_log) {
+	log {
+		output stdout
+		format filter {
+			wrap json
+			fields {
+				request>uri regexp \?.*$ ?redacted
+				request>remote_ip ip_mask {
+					ipv4 24
+					ipv6 48
+				}
+				request>client_ip ip_mask {
+					ipv4 24
+					ipv6 48
+				}
+			}
+		}
+	}
+}
+
+# OWASP Core Rule Set at paranoia level 1 (C-35), blocking. Tune false
+# positives with SecRuleRemoveById below, never by turning the engine off.
+(waf) {
+	coraza_waf {
+		load_owasp_crs
+		directives `
+			Include @coraza.conf-recommended
+			Include @crs-setup.conf.example
+			Include @owasp_crs/*.conf
+			SecRuleEngine On
+			SecAuditEngine Off
+			SecResponseBodyAccess Off
+		`
+	}
+}
+
+# A flood guard per client IP, not a fairness limit: a whole school class can
+# share one IP, so it is set far above normal use. The API keeps its own
+# per-user and per-route limits in Redis.
+(edge_limit) {
+	rate_limit {
+		zone per_ip {
+			key {client_ip}
+			events {$EDGE_RATE_LIMIT_PER_MINUTE:3000}
+			window 1m
+		}
+	}
+}
+
+(security_headers) {
+	header {
+		Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+		X-Content-Type-Options nosniff
+		-Server
+		-X-Powered-By
+	}
+}
+
+# The API, shared by the web and studio hosts. Payment provider callbacks skip
+# the WAF: a false positive there would lose a paid order, and the API
+# authenticates them before reading anything else (C-27).
+(api_routes) {
+	# Blocks with a path are tried from the most specific path down.
+	handle /api/v1/health/ready {
+		respond 404
+	}
+	handle /api/v1/payments/payme {
+		reverse_proxy api:4000
+	}
+	handle /api/v1/payments/click/* {
+		reverse_proxy api:4000
+	}
+	handle /api/* {
+		import waf
+		reverse_proxy api:4000
+	}
+}
+
+(errors) {
+	handle_errors 403 429 502 503 504 {
+		root * /srv/errors
+		rewrite * /{err.status_code}.html
+		file_server
+	}
+}
+
+# ── Sites ───────────────────────────────────────────────────
+
+{$DOMAIN} {
+	import access_log
+	import security_headers
+	import edge_limit
+	import errors
+	encode zstd gzip
+	import api_routes
+	handle {
+		import waf
+		reverse_proxy web:3000
+	}
+}
+
+www.{$DOMAIN} {
+	redir https://{$DOMAIN}{uri} permanent
+}
+
+studio.{$DOMAIN} {
+	import access_log
+	import security_headers
+	import edge_limit
+	import errors
+	encode zstd gzip
+	import api_routes
+	handle {
+		import waf
+		reverse_proxy studio:3000
+	}
+}
+
+# Storage: requests are authorised by presigned URLs, so no cookies reach this
+# host and the WAF is not applied (uploads are large binary bodies). Only
+# object reads and presigned PUTs are allowed; bucket-level operations are not.
+media.{$DOMAIN} {
+	import access_log
+	import security_headers
+	import errors
+	request_body {
+		max_size 2GB
+	}
+	@object {
+		method GET HEAD PUT OPTIONS
+		path_regexp ^/[a-z0-9.-]+/.+
+	}
+	handle @object {
+		reverse_proxy seaweedfs:8333 {
+			# Large uploads and slow mobile networks.
+			transport http {
+				read_timeout 10m
+				write_timeout 10m
+			}
+		}
+	}
+	handle {
+		respond 404
+	}
+}
+
+# Prometheus metrics, reachable only on the private network (not published).
+:9180 {
+	metrics /metrics
+}

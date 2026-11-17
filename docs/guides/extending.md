@@ -36,12 +36,21 @@ _Status: question engine arrives in step 6.4._
 
 ## Add a payment provider
 
-_Status: billing arrives in step 6.5._
+Payme (`apps/api/src/billing/payme/`, JSON-RPC with a key) and Click
+(`apps/api/src/billing/click/`, form posts with an MD5 signature) are the worked
+examples.
 
-1. Implement the `PaymentProvider` interface in a new adapter
-   ([ADR-0008](../adr/0008-payment-provider-adapters.md)), including
-   callback authentication before any parsing.
-2. Add adapter tests: valid callback, forged, replayed, wrong amount, duplicate.
-3. Add the provider to `config/billing.yaml` and its keys to `.env.example`
-   (placeholders only).
-4. Add the provider to `PaymentProviderCode` in the OpenAPI contract.
+1. Extend `PaymentProvider` (`apps/api/src/billing/payment-provider.ts`,
+   [ADR-0008](../adr/0008-payment-provider-adapters.md)) with the provider's
+   checkout URL, and give the adapter a `handle()` for its callbacks that
+   authenticates the provider before parsing anything else.
+2. Register it in `billing.module.ts` with a factory that returns `null` unless
+   the code is listed in `PAYMENT_PROVIDERS`, and otherwise adds it to the
+   providers map. Add a route to `PaymentCallbacksController` with
+   `@Access('provider:<code>')`.
+3. On payment call `BillingService.fulfil()` and on a refund `revoke()`, both
+   inside the transaction that changes the payment row.
+4. Add tests: valid callback, forged, replayed, wrong amount, duplicate, timeout.
+5. Add the code to the `provider` checks in a migration, its keys to
+   `apps/api/src/config/env.ts` and `.env.example` (placeholders only), and to
+   `PaymentProviderCode` in the OpenAPI contract.

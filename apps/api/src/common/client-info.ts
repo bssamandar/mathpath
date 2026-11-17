@@ -69,3 +69,14 @@ export function userAgentSummary(userAgent: string | undefined): string | null {
   const system = systems.find(([re]) => re.test(userAgent))?.[1] ?? 'unknown system';
   return `${browser} on ${system}`;
 }
+
+/**
+ * Spots user agents of scripts and headless browsers. Easy to fake, so it is
+ * only one risk signal among several, never a reason to block on its own.
+ */
+export function looksAutomated(userAgent: string | undefined): boolean {
+  if (!userAgent) return true;
+  return /HeadlessChrome|PhantomJS|Puppeteer|Playwright|Selenium|curl\/|Wget|python-requests|python-httpx|Go-http-client|axios\//i.test(
+    userAgent,
+  );
+}

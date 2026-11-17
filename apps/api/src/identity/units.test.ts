@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { generateKeyPairSync } from 'node:crypto';
 import { loadConfig } from '@mathpath/config';
 import { describe, expect, it, vi } from 'vitest';
@@ -47,6 +48,27 @@ describe('AuthKeys', () => {
     const keys = AuthKeys.fromEnv(parseEnv({ ...base, AUTH_HMAC_SECRET: 's'.repeat(32) }));
     expect(keys.hmac('otp', 'x')).not.toBe(keys.hmac('csrf', 'x'));
     expect(keys.hmac('otp', 'x')).toBe(keys.hmac('otp', 'x'));
+  });
+
+  it('seals secrets so that they open only unchanged and with the same root secret', () => {
+    const keys = AuthKeys.fromEnv(parseEnv({ ...base, AUTH_HMAC_SECRET: 's'.repeat(32) }));
+    const secret = Buffer.from('totp secret bytes');
+    const sealed = keys.seal('mfa-secret', secret);
+    expect(sealed.includes(secret)).toBe(false);
+    expect(keys.open('mfa-secret', sealed)).toEqual(secret);
+    // A fresh IV each time: the same secret never seals to the same bytes.
+    expect(keys.seal('mfa-secret', secret)).not.toEqual(sealed);
+
+    const tampered = Buffer.from(sealed);
+    tampered[tampered.length - 1]! ^= 1;
+    expect(() => keys.open('mfa-secret', tampered)).toThrow();
+    // A value cut short (so its tag would be shorter) is refused.
+    expect(() => keys.open('mfa-secret', sealed.subarray(0, 20))).toThrow();
+    expect(() =>
+      keys.open('mfa-secret', Buffer.concat([sealed.subarray(0, 24), sealed.subarray(28)])),
+    ).toThrow();
+    const other = AuthKeys.fromEnv(parseEnv({ ...base, AUTH_HMAC_SECRET: 't'.repeat(32) }));
+    expect(() => other.open('mfa-secret', sealed)).toThrow();
   });
 });
 
@@ -122,9 +144,10 @@ describe('SMS helpers', () => {
   });
 
   it('prints messages in development', async () => {
+    const log = vi.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
     const sender = new LogSmsSender();
-    const log = vi.spyOn(sender['logger'], 'log').mockImplementation(() => undefined);
     await sender.send('+998901234567', 'hello');
     expect(log).toHaveBeenCalledWith('To +99890*****67: hello');
+    log.mockRestore();
   });
 });

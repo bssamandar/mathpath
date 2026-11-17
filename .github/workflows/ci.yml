@@ -20,6 +20,17 @@ jobs:
     name: Lint, typecheck, test, build
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    # Real Redis for the rate-limiter and counter scripts (src/common/redis.test.ts).
+    services:
+      redis:
+        image: redis:7.4-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      TEST_REDIS_URL: redis://localhost:6379
+      # SeaweedFS for the S3 storage tests (packages/media), started below.
+      TEST_S3_ENDPOINT: http://localhost:8333
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
@@ -28,6 +39,24 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # The worker's transcoding tests run the real ffmpeg (apps/worker/src/transcode).
+      - name: Install ffmpeg
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends ffmpeg
+      # Started with docker run because service containers cannot take a command.
+      # Pinned by digest like the actions (C-44); same version as infra/docker-compose.yml.
+      - name: Start SeaweedFS
+        run: |
+          docker run -d --name seaweedfs -p 8333:8333 \
+            -v "$PWD/infra/seaweedfs/s3.json:/etc/seaweedfs/s3.json:ro" \
+            chrislusf/seaweedfs:3.97@sha256:5a93d0bb57a8bed169ce3b60219f5e9a8b94e57035e636dd768f8afdea6d9b19 \
+            server -dir=/data -ip.bind=0.0.0.0 -s3 -s3.port=8333 \
+            -s3.config=/etc/seaweedfs/s3.json -master.volumeSizeLimitMB=64 -volume.max=32
+          for i in $(seq 1 60); do
+            [ "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8333/)" = 403 ] && exit 0
+            sleep 2
+          done
+          docker logs seaweedfs
+          exit 1
       - name: Check formatting
         run: pnpm format:check
       - run: pnpm lint
@@ -42,6 +71,39 @@ jobs:
           name: coverage
           path: '**/coverage/'
           retention-days: 14
+
+  monitoring:
+    name: Monitoring config
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    # Checks infra/monitoring with the same tools and image digests that run it.
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Prometheus config and alert rules
+        run: |
+          docker run --rm -v "$PWD/infra/monitoring/prometheus:/etc/prometheus:ro" \
+            --entrypoint promtool \
+            prom/prometheus:v3.5.0@sha256:63805ebb8d2b3920190daf1cb14a60871b16fd38bed42b857a3182bc621f4996 \
+            check config /etc/prometheus/prometheus.yml
+      - name: Alertmanager config
+        run: |
+          mkdir -p /tmp/am-secrets && echo dummy > /tmp/am-secrets/telegram_bot_token && echo dummy > /tmp/am-secrets/smtp_password
+          docker run --rm \
+            -v "$PWD/infra/monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro" \
+            -v /tmp/am-secrets:/etc/alertmanager/secrets:ro \
+            --entrypoint amtool \
+            prom/alertmanager:v0.28.1@sha256:27c475db5fb156cab31d5c18a4251ac7ed567746a2483ff264516437a39b15ba \
+            check-config /etc/alertmanager/alertmanager.yml
+      - name: Loki config
+        run: |
+          docker run --rm -v "$PWD/infra/monitoring/loki/loki.yml:/etc/loki/loki.yml:ro" \
+            grafana/loki:3.5.3@sha256:3165cecce301ce5b9b6e3530284b080934a05cd5cafac3d3d82edcb887b45ecd \
+            -config.file=/etc/loki/loki.yml -verify-config
+      - name: Alloy config
+        run: |
+          docker run --rm -v "$PWD/infra/monitoring/alloy:/etc/alloy:ro" \
+            grafana/alloy:v1.10.0@sha256:1bc130e909116a4bf950eb5187a346007d3b796f96832b529acb14a64e41230f \
+            fmt /etc/alloy/config.alloy
 
   commits:
     name: Conventional Commits

@@ -4,6 +4,7 @@
  */
 import type { AppConfig } from '@mathpath/config';
 import { type Database, type Locale, newId } from '@mathpath/db';
+import { Logger } from '@nestjs/common';
 import type { Kysely } from 'kysely';
 import type { AuditService } from '../audit/audit.service';
 import type { Clock } from '../common/clock';
@@ -14,6 +15,9 @@ import { tooMany } from './otp.service';
 import type { PasswordService } from './password.service';
 import type { ClientContext, IssuedSession, SessionService } from './session.service';
 import type { SignedToken, TokenService } from './token.service';
+import type { RiskService } from '../risk/risk.service';
+import { smsMessages } from './sms/messages';
+import { maskPhone, type SmsSender } from './sms/sms-sender';
 
 export interface RegisterInput {
   registrationToken: string;
@@ -40,6 +44,8 @@ const phoneTaken = (): ProblemException =>
   );
 
 export class AuthService {
+  private readonly logger = new Logger('AuthService');
+
   constructor(
     private readonly db: Kysely<Database>,
     private readonly otp: OtpService,
@@ -50,6 +56,8 @@ export class AuthService {
     private readonly clock: Clock,
     private readonly limits: AppConfig['limits']['rateLimits'],
     private readonly audit: AuditService,
+    private readonly risk: RiskService,
+    private readonly sms: SmsSender,
   ) {}
 
   /** Verifies an OTP and continues the flow it was requested for. */
@@ -58,7 +66,7 @@ export class AuthService {
     code: string,
     client: ClientContext,
   ): Promise<OtpVerifyResult> {
-    const verified = await this.otp.verify(challengeId, code);
+    const verified = await this.otp.verify(challengeId, code, ['signup', 'login']);
     const user = await this.liveUserByPhone(verified.phone);
 
     if (verified.purpose === 'signup') {
@@ -142,11 +150,18 @@ export class AuthService {
    * checked before the password, so a locked-out attacker gets no signal
    * about whether a guess was right.
    */
-  async login(phone: string, password: string, client: ClientContext): Promise<IssuedSession> {
+  async login(
+    phone: string,
+    password: string,
+    client: ClientContext,
+    captchaToken?: string,
+  ): Promise<IssuedSession> {
     const accountKey = `login:account:${phone}`;
     const ipKey = `login:ip:${client.ipPrefix ?? 'unknown'}`;
+    const lockKey = `login:lock:${phone}`;
     const accountWindow = perMinutes(this.limits.loginFailuresPerAccount);
     const ipWindow = perMinutes(this.limits.loginFailuresPerIpPrefix);
+    const lockWindow = perMinutes(this.limits.accountLock);
 
     for (const [key, window] of [
       [accountKey, accountWindow],
@@ -155,12 +170,32 @@ export class AuthService {
       const result = await this.limiter.check(key, window);
       if (!result.allowed) throw tooMany(result.retryAfterS);
     }
+    const lock = await this.limiter.check(lockKey, lockWindow);
+    if (!lock.allowed) {
+      // Same answer for unknown numbers, so the lock does not reveal accounts.
+      throw new ProblemException(
+        423,
+        'ACCOUNT_TEMPORARILY_LOCKED',
+        'Too many wrong passwords. Try again later or sign in with an SMS code.',
+        { retryAfterS: lock.retryAfterS },
+      );
+    }
 
     const user = await this.liveUserByPhone(phone);
+    await this.risk.enforce({
+      kind: 'login',
+      phone,
+      userId: user?.id ?? null,
+      ipPrefix: client.ipPrefix,
+      automationSuspected: client.automationSuspected,
+      captchaToken,
+    });
+
     const check = await this.passwords.verify(user?.password_hash ?? null, password);
     if (!user || !check.ok) {
       await this.limiter.record(accountKey, accountWindow);
       await this.limiter.record(ipKey, ipWindow);
+      const failures = await this.limiter.record(lockKey, lockWindow);
       // The phone number is not logged; for an unknown number nothing identifies the target.
       await this.audit.record({
         action: 'auth.login_failed',
@@ -170,6 +205,7 @@ export class AuthService {
         requestId: client.requestId,
         metadata: { reason: user ? 'wrong_password' : 'unknown_account' },
       });
+      if (user && failures === lockWindow.limit) await this.lockedOut(user.id, phone, client);
       throw invalidCredentials();
     }
     this.assertActive(user.status);
@@ -184,6 +220,40 @@ export class AuthService {
         .execute();
     }
     return this.sessions.start(user.id, client, 'password');
+  }
+
+  /** Tells the owner by SMS that someone is guessing their password (C-04). */
+  private async lockedOut(userId: string, phone: string, client: ClientContext): Promise<void> {
+    await this.audit.record({
+      action: 'auth.account_temporarily_locked',
+      targetType: 'user',
+      targetId: userId,
+      ipPrefix: client.ipPrefix,
+      requestId: client.requestId,
+    });
+    void this.sms.send(phone, smsMessages.accountLocked()).catch((error: unknown) => {
+      this.logger.error(`Lock notice to ${maskPhone(phone)} failed: ${(error as Error).message}`);
+    });
+  }
+
+  /** @throws ProblemException 400 unless `phone` is the user's own number. */
+  /**
+   * The signed-in account's phone, for a `confirm_action` code. A phone the
+   * client sends must be that same number.
+   * @throws ProblemException 400 PHONE_MISMATCH.
+   */
+  async ownPhone(userId: string, phone?: string): Promise<string> {
+    const user = await this.db
+      .selectFrom('users')
+      .select('phone_e164')
+      .where('id', '=', userId)
+      .executeTakeFirst();
+    if (!user?.phone_e164 || (phone !== undefined && user.phone_e164 !== phone)) {
+      throw new ProblemException(400, 'PHONE_MISMATCH', 'Use the phone number of your account.', {
+        errors: [{ field: 'phone', message: 'must be the phone number of the signed-in account' }],
+      });
+    }
+    return user.phone_e164;
   }
 
   private assertActive(status: string): void {

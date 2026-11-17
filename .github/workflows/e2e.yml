@@ -1,0 +1,106 @@
+# Browser, accessibility and load smoke tests against the built apps
+# (security plan C-36; docs/guides/testing.md).
+#
+# Starts Postgres, Redis and SeaweedFS, builds everything, runs the API, web
+# and studio as in production (tests/e2e/start-stack.sh), then:
+# - Playwright on a phone (web) and a desktop (studio), with axe on every
+#   screen it visits (WCAG 2.1 AA, serious and critical issues fail);
+# - a one-minute k6 smoke load: 20 students practising at once.
+# The full peak load test runs against staging from load.yml.
+name: E2E
+
+on:
+  pull_request:
+  push:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Same versions as production (infra/docker/postgres.Dockerfile, release.yml).
+  K6_IMAGE: grafana/k6:2.3.0@sha256:2dd4756ec6e14e62778916e1eb850108e4b499304c02df56760fa0bdb0fba0b8
+
+jobs:
+  e2e:
+    name: Browser, accessibility and load smoke
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16.15-bookworm@sha256:5264710be20f409750ac6dc4e5706dcef929c87e241605463f0f9aefa932a8d9
+        env:
+          POSTGRES_USER: mathpath
+          POSTGRES_PASSWORD: mathpath_e2e_only
+          POSTGRES_DB: mathpath_e2e
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U mathpath" --health-interval 5s --health-timeout 3s --health-retries 10
+      redis:
+        image: redis:7.4.11-alpine@sha256:d9436322172a5b482c187bf1f363d3c4fea086fcca6b9c8a94de8f0f39ed3193
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      DATABASE_URL: postgres://mathpath:mathpath_e2e_only@127.0.0.1:5432/mathpath_e2e
+      REDIS_URL: redis://127.0.0.1:6379
+      S3_ENDPOINT: http://127.0.0.1:8333
+      # Next.js fixes the /api rewrite at build time.
+      API_ORIGIN: http://127.0.0.1:4000
+      E2E_LOG_DIR: ${{ github.workspace }}/e2e-logs
+      E2E_API_LOG: ${{ github.workspace }}/e2e-logs/api.log
+      E2E_FAMILY_FILE: ${{ github.workspace }}/e2e-logs/family.json
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Start SeaweedFS
+        run: |
+          docker run -d --name seaweedfs -p 8333:8333 \
+            -v "$PWD/infra/seaweedfs/s3.json:/etc/seaweedfs/s3.json:ro" \
+            chrislusf/seaweedfs:3.97@sha256:5a93d0bb57a8bed169ce3b60219f5e9a8b94e57035e636dd768f8afdea6d9b19 \
+            server -dir=/data -ip.bind=0.0.0.0 -s3 -s3.port=8333 \
+            -s3.config=/etc/seaweedfs/s3.json -master.volumeSizeLimitMB=64 -volume.max=32
+          for i in $(seq 1 60); do
+            [ "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8333/)" = 403 ] && exit 0
+            sleep 2
+          done
+          docker logs seaweedfs
+          exit 1
+      # Loose env mode passes API_ORIGIN through Turbo to next build.
+      - name: Build
+        run: pnpm exec turbo run build --env-mode=loose
+      - name: Install Chromium
+        run: pnpm --filter @mathpath/e2e exec playwright install --with-deps chromium
+      - name: Start the stack
+        run: tests/e2e/start-stack.sh
+      - name: Browser and accessibility tests
+        run: pnpm --filter @mathpath/e2e e2e
+      - name: Load smoke (20 students, 1 minute)
+        run: |
+          family=$(cat "$E2E_FAMILY_FILE")
+          code=$(jq -r .familyCode <<<"$family")
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -v family_code="$code" \
+            -v template_nickname="$(jq -r .nickname <<<"$family")" -v count=20 \
+            -f tests/load/prepare-students.sql
+          docker run --rm --network host -v "$PWD/tests/load:/load:ro" "$K6_IMAGE" run \
+            -e BASE_URL=http://127.0.0.1:4000 -e FAMILY_CODE="$code" \
+            -e PIN="$(jq -r .pin <<<"$family")" -e PROFILE=smoke /load/student-journey.js
+      - name: Upload the report and logs
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: e2e-report
+          path: |
+            tests/e2e/playwright-report/
+            tests/e2e/test-results/
+            e2e-logs/*.log
+          retention-days: 7

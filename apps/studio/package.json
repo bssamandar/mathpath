@@ -7,16 +7,22 @@
     "dev": "next dev --port 3001",
     "build": "next build",
     "start": "next start --port 3001",
-    "lint": "eslint app next.config.ts",
-    "typecheck": "tsc --noEmit"
+    "lint": "eslint app components lib middleware.ts next.config.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
+    "@mathpath/client": "workspace:*",
+    "katex": "0.18.11",
     "next": "15.5.28",
     "react": "19.1.10",
     "react-dom": "19.1.10"
   },
   "devDependencies": {
     "@types/react": "19.1.17",
-    "@types/react-dom": "19.1.11"
+    "@types/react-dom": "19.1.11",
+    "@vitest/coverage-v8": "4.1.12",
+    "vitest": "4.1.12"
   }
 }

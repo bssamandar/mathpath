@@ -14,6 +14,19 @@ practice:
   solutionAfterMistakes: 2
   # Correct answers needed before the mastery test unlocks.
   minCorrectBeforeMasteryTest: 6
+  # Questions in one practice set, easy to hard (UX S5 "item 3/8").
+  itemsPerSet: 8
+
+# The mastery test: no hints, results at the end (UX F4).
+masteryTest:
+  items: 8
+
+# Spaced review of a mastered topic: a short test, no hints (ADR-0006).
+# After the listed intervals run out, each new interval is the last one
+# times the topic's ease (SM-2); a failed review lowers the ease by 0.2.
+review:
+  items: 4
+  initialEase: 2.5
 
 # Gap routing limits (architecture §5.2). They stop a struggling student
 # from being sent down an endless chain of prerequisite detours.

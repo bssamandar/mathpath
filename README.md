@@ -40,6 +40,7 @@ and the [ADRs](docs/adr/).
 | pnpm                    | 10                    | `pnpm -v` (install with `corepack enable`) |
 | Docker + Docker Compose | recent                | `docker compose version`                   |
 | Git                     | 2.40+                 | `git --version`                            |
+| ffmpeg                  | 6+                    | `ffmpeg -version` (worker and its tests)   |
 
 Optional: [gitleaks](https://github.com/gitleaks/gitleaks) for the secret scan in the pre-commit hook.
 
@@ -57,7 +58,7 @@ pnpm install             # also installs the Git hooks (husky)
 # 2. Environment variables
 cp .env.example .env     # defaults work for local development
 
-# 3. Start local services (PostgreSQL, Redis)
+# 3. Start local services (PostgreSQL, Redis, SeaweedFS for media)
 pnpm services:up
 
 # 4. Run all apps in watch mode
@@ -68,7 +69,8 @@ Then open:
 
 - API health check: <http://localhost:4000/api/v1/health>
 - Student and parent app: <http://localhost:3000>
-- Studio: <http://localhost:3001>
+- Studio: <http://localhost:3001>. Staff accounts need an authenticator app
+  (2FA is set up on first sign-in); `pnpm db:seed` loads demo lessons to edit.
 
 Stop the local services with `pnpm services:down`.
 
@@ -86,6 +88,11 @@ Stop the local services with `pnpm services:down`.
 | `pnpm build`                        | Builds every app and package                                                                             |
 
 Run one workspace only with a filter, for example `pnpm --filter @mathpath/api test`.
+
+The tests need the local services: Redis on port 6379 and SeaweedFS (S3) on
+port 8333 (`pnpm services:up`), and `ffmpeg` on the PATH. Set
+`TEST_S3_ENDPOINT=http://localhost:8333` to run the S3 storage tests; without
+it they are left out and `packages/media` stays under the coverage gate.
 
 The same checks run in CI on every pull request ([`.github/workflows`](.github/workflows)).
 

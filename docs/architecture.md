@@ -367,7 +367,12 @@ admin UI later, with an audit trail, if they change often.
    encrypted with AES-128 using a per-video key.
 2. Keys are served only by `GET /media/{id}/key`, which checks the session and
    entitlement and is rate-limited.
-3. Playlist URLs are signed and expire after 10 minutes (config).
+3. Playlist URLs are signed and expire after 10 minutes (config). In the
+   implementation (step 6.3) the API serves the playlists itself at
+   `/media/{id}/hls/*.m3u8`: the token in the URL is bound to the video, the
+   viewer and the expiry, and the session must match. Segment lines become
+   presigned storage URLs (1 hour, `segmentUrlTtlSeconds`, so a paused video
+   can resume); segments are encrypted, so the key endpoint stays the gate.
 4. The player overlays a **dynamic watermark** (short user ID + time, position
    changes periodically). This deters screen recording and identifies leaks.
 5. Widevine/FairPlay DRM comes after the MVP, behind the same `media` module
@@ -399,10 +404,13 @@ admin UI later, with an audit trail, if they change often.
 
 ### 7.6 Observability
 
-OpenTelemetry traces and metrics from the API and worker go to Prometheus/Grafana.
+Metrics from the API and worker go to Prometheus/Grafana through
+`prom-client` (step 7.1); OpenTelemetry tracing can be added later without
+changing the metric names.
 Structured JSON logs go to Loki, with personal data redacted at the logger.
-Errors go to a self-hosted Sentry-compatible tracker (GlitchTip), so that error
-payloads stay in the country. Every request carries a request ID, which is
+Errors are logged as JSON with their stack and alerted on by rate; a
+self-hosted Sentry-compatible tracker (GlitchTip) can be added later, so that
+error payloads still stay in the country. Details: docs/guides/monitoring.md. Every request carries a request ID, which is
 returned in error responses so support can trace a problem.
 
 ### 7.7 Security architecture (summary; details in Phase 4)
@@ -424,6 +432,17 @@ returned in error responses so support can trace a problem.
   the same data centre) holds them; the apps read secrets at start-up.
 - **Audit log:** append-only. The application's DB role has `INSERT` and
   `SELECT` only on `audit_log`.
+
+### 7.8 Deployment
+
+The MVP runs as one Docker Compose stack on one server in Uzbekistan
+(`infra/docker-compose.prod.yml`). Caddy is the edge: TLS certificates, the
+OWASP CRS WAF (Coraza), a per-IP flood limit and the three hosts (`DOMAIN` for
+web and `/api`, `studio.DOMAIN`, `media.DOMAIN` for storage). Data services sit
+on an internal network with no internet access. Images are built, scanned and
+signed in CI and deployed by digest with `infra/deploy.sh`. Postgres archives
+WAL continuously to off-site storage with pgBackRest, and a monthly drill
+restores it. Details: docs/guides/deploy.md and docs/guides/backups.md.
 
 ---
 
@@ -458,3 +477,4 @@ provider" is written in Phase 6, once the code exists.
 | [0007](adr/0007-outbox-domain-events.md)        | Transactional outbox + BullMQ                                            | RabbitMQ/Kafka                         |
 | [0008](adr/0008-payment-provider-adapters.md)   | Provider adapter interface; tiyin integers; three-level idempotency      | Payment aggregator only                |
 | [0009](adr/0009-nextjs-two-frontends.md)        | Next.js, separate `web` and `studio` apps                                | Single SPA (Vite)                      |
+| [0011](adr/0011-own-expression-engine.md)       | Own expression engine for question templates                             | Restricted math.js                     |

@@ -1,3 +1,4 @@
+import request from 'supertest';
 import { createTestDb, type Database } from '@mathpath/db';
 import type { Type } from '@nestjs/common';
 import type { NestExpressApplication } from '@nestjs/platform-express';
@@ -67,4 +68,18 @@ export async function createTestApp(extraControllers: Type[] = []): Promise<Test
   await app.init();
   // The DatabaseModule closes the database on shutdown.
   return { app, db, clock, sms, close: () => app.close() };
+}
+
+/** A typical phone browser; requests without a user agent look automated to the risk engine. */
+export const BROWSER_UA =
+  'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Mobile Safari/537.36';
+
+/** Supertest with a browser user agent on every request. */
+export function browser(server: Parameters<typeof request>[0]) {
+  return {
+    get: (url: string) => request(server).get(url).set('User-Agent', BROWSER_UA),
+    post: (url: string) => request(server).post(url).set('User-Agent', BROWSER_UA),
+    patch: (url: string) => request(server).patch(url).set('User-Agent', BROWSER_UA),
+    put: (url: string) => request(server).put(url).set('User-Agent', BROWSER_UA),
+  };
 }

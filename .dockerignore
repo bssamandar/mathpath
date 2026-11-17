@@ -5,3 +5,6 @@
 .git
 .env
 .env.*
+**/*.tsbuildinfo
+infra/monitoring/secrets
+infra/**/.env*
