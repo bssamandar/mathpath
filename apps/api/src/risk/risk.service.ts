@@ -40,7 +40,8 @@ export interface RiskInput {
 export interface RiskAssessment {
   score: number;
   action: RiskAction;
-  signals: SignalName[];
+  /** Weighted signals from config, plus `accountRestricted` after an admin decision. */
+  signals: (SignalName | 'accountRestricted')[];
   /** The SMS budget is spent, so a CAPTCHA is needed regardless of score. */
   budgetExhausted: boolean;
 }
@@ -60,7 +61,7 @@ export class RiskService {
   /** Scores a request without acting on it. */
   async assess(input: RiskInput): Promise<RiskAssessment> {
     const weights = this.rules.signals;
-    const signals: SignalName[] = [];
+    const signals: RiskAssessment['signals'] = [];
     let score = 0;
     const add = (name: SignalName, weight = weights[name]): void => {
       if (weight > 0) {
@@ -99,6 +100,16 @@ export class RiskService {
     }
 
     let action = this.actionFor(score);
+    // An admin restricted this account after a review (S17): every sign-in
+    // and code request needs an interactive CAPTCHA until it is cleared.
+    if (
+      input.userId &&
+      ORDER.indexOf(action) < ORDER.indexOf('step_up') &&
+      (await this.restricted(input.userId))
+    ) {
+      signals.push('accountRestricted');
+      action = 'step_up';
+    }
     const budgetExhausted = input.kind === 'otp_request' && (await this.budget.exhausted());
     if (budgetExhausted && ORDER.indexOf(action) < ORDER.indexOf('invisible_captcha')) {
       action = 'invisible_captcha';
@@ -142,6 +153,15 @@ export class RiskService {
     let action: RiskAction = 'allow';
     for (const band of this.rules.actions) if (score >= band.from) action = band.action;
     return action;
+  }
+
+  private async restricted(userId: string): Promise<boolean> {
+    const user = await this.db
+      .selectFrom('users')
+      .select('risk_level')
+      .where('id', '=', userId)
+      .executeTakeFirst();
+    return user?.risk_level === 'high';
   }
 
   private async prefixBlocked(phone: string): Promise<boolean> {

@@ -2058,6 +2058,12 @@ paths:
       tags: [Admin]
       operationId: adminSearchUsers
       summary: Search users by phone, name or ID. Access is audited.
+      description: |
+        `q` is a user ID, a phone number (with or without +998, spaces or
+        dashes; matched exactly) or the start of a first name, last name,
+        full name or learner nickname. Newest accounts first. Every search is
+        written to the audit log with the kind of term and the number of
+        results, never the term itself. Phone numbers come back masked.
       x-permission: admin:users
       parameters:
         - { name: q, in: query, required: true, schema: { type: string, minLength: 3, maxLength: 64 } }
@@ -2084,6 +2090,15 @@ paths:
       tags: [Admin]
       operationId: adminUpdateUser
       summary: Change status or roles. Granting staff roles requires the target to have MFA.
+      description: |
+        Only `teacher`, `author`, `reviewer`, `admin` and `support` are
+        managed here; `student` and `parent` come from sign-up. Each status
+        change and each role granted or taken away is a separate audit entry
+        with the reason. Locking, suspending or taking a role away signs the
+        person out everywhere at once. Errors: 404 USER_NOT_FOUND;
+        409 ACCOUNT_PENDING_DELETION; 422 SELF_CHANGE_FORBIDDEN (an admin
+        cannot change their own account), MFA_NOT_ENROLLED (a staff role
+        needs confirmed 2FA, C-08), VALIDATION_FAILED.
       x-permission: admin:users
       requestBody:
         required: true
@@ -2093,14 +2108,17 @@ paths:
               type: object
               required: [reason]
               additionalProperties: false
+              description: At least one of status, addRoles or removeRoles.
               properties:
                 status: { type: string, enum: [active, locked, suspended] }
                 addRoles:
                   type: array
-                  items: { $ref: '#/components/schemas/Role' }
+                  maxItems: 5
+                  items: { $ref: '#/components/schemas/ManagedRole' }
                 removeRoles:
                   type: array
-                  items: { $ref: '#/components/schemas/Role' }
+                  maxItems: 5
+                  items: { $ref: '#/components/schemas/ManagedRole' }
                 reason: { type: string, minLength: 5, maxLength: 500 }
       responses:
         '200':
@@ -2108,16 +2126,18 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/AdminUser' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/Unprocessable' }
 
   /admin/risk-reviews:
     get:
       tags: [Admin]
       operationId: adminListRiskReviews
-      summary: Accounts flagged by the risk engine.
+      summary: Accounts flagged by the risk engine, newest first.
       x-permission: admin:risk
       parameters:
-        - { name: status, in: query, schema: { type: string, enum: [open, cleared, restricted, banned] } }
+        - { name: status, in: query, schema: { type: string, enum: [open, cleared, restricted, banned], default: open } }
         - $ref: '#/components/parameters/Cursor'
         - $ref: '#/components/parameters/Limit'
       responses:
@@ -2139,6 +2159,13 @@ paths:
       tags: [Admin]
       operationId: adminDecideRiskReview
       summary: Clear, restrict or ban a flagged account.
+      description: |
+        `cleared` sets the account back to normal risk. `restricted` makes
+        every sign-in and code request ask for an interactive CAPTCHA.
+        `banned` suspends the account and signs it out everywhere. The notes
+        are the written reason and go to the audit log. Errors:
+        404 REVIEW_NOT_FOUND; 409 REVIEW_ALREADY_DECIDED;
+        422 SELF_CHANGE_FORBIDDEN, VALIDATION_FAILED.
       x-permission: admin:risk
       parameters:
         - { name: reviewId, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } }
@@ -2152,13 +2179,16 @@ paths:
               additionalProperties: false
               properties:
                 decision: { type: string, enum: [cleared, restricted, banned] }
-                notes: { type: string, maxLength: 1000 }
+                notes: { type: string, minLength: 5, maxLength: 1000 }
       responses:
         '200':
           description: Decided.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/RiskReview' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
 
   /admin/payments/{paymentId}/refunds:
     post:
@@ -2269,12 +2299,16 @@ paths:
     get:
       tags: [Admin]
       operationId: adminListAuditLog
-      summary: Search the append-only audit log.
+      summary: Search the append-only audit log, newest first.
+      description: |
+        `action` matches that action and every action under it, so `user`
+        finds `user.role.grant` and `user.status_change`. `from` is inclusive
+        and `to` exclusive.
       x-permission: admin:audit
       parameters:
         - { name: actorId, in: query, schema: { $ref: '#/components/schemas/Id' } }
         - { name: targetId, in: query, schema: { $ref: '#/components/schemas/Id' } }
-        - { name: action, in: query, schema: { type: string } }
+        - { name: action, in: query, schema: { type: string, pattern: '^[a-z_]+(\.[a-z_]+)*$', maxLength: 64 } }
         - { name: from, in: query, schema: { type: string, format: date-time } }
         - { name: to, in: query, schema: { type: string, format: date-time } }
         - $ref: '#/components/parameters/Cursor'
@@ -3426,23 +3460,46 @@ components:
         createdAt: { type: string, format: date-time }
         lastLoginAt: { type: [string, 'null'], format: date-time }
 
+    ManagedRole:
+      type: string
+      description: Roles an admin grants in the studio; student and parent come from sign-up.
+      enum: [teacher, author, reviewer, admin, support]
+
     RiskReview:
       type: object
-      required: [id, subjectUserId, reason, status, createdAt]
+      required: [id, subjectUserId, reason, status, createdAt, decidedAt, notes, subject, signals]
       properties:
         id: { $ref: '#/components/schemas/Id' }
         subjectUserId: { $ref: '#/components/schemas/Id' }
         reason: { type: string }
+        subject:
+          type: object
+          description: The flagged account, with the phone masked.
+          required: [firstName, phoneMasked, status, riskLevel, createdAt]
+          properties:
+            firstName: { type: string }
+            phoneMasked: { type: [string, 'null'] }
+            status: { type: string }
+            riskLevel: { type: string }
+            createdAt: { type: string, format: date-time }
         signals:
           type: array
+          description: The account's latest risk events (up to 10), newest first.
           items:
             type: object
+            required: [type, scoreDelta, names, at]
             properties:
-              type: { type: string }
+              type: { type: string, examples: ['login.block_and_review'] }
               scoreDelta: { type: integer }
+              names:
+                type: array
+                description: The rules that scored, as named in config/risk.yaml.
+                items: { type: string }
               at: { type: string, format: date-time }
         status: { type: string, enum: [open, cleared, restricted, banned] }
         createdAt: { type: string, format: date-time }
+        decidedAt: { type: [string, 'null'], format: date-time }
+        notes: { type: [string, 'null'] }
 
     AuditEntry:
       type: object
@@ -3450,6 +3507,9 @@ components:
       properties:
         id: { $ref: '#/components/schemas/Id' }
         actorId: { type: [string, 'null'], format: uuid }
+        actorRoles:
+          type: array
+          items: { type: string }
         action: { type: string }
         targetType: { type: string }
         targetId: { type: [string, 'null'], format: uuid }

@@ -177,6 +177,14 @@ project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   confirmed by an SMS code. `GET /students/{id}/reports/weekly`. A
   `confirm_action` code no longer needs the phone in the request: it goes to
   the account's own number.
+- Admin console in the studio (`/users`, `/risk`, `/audit`): search users by
+  phone, name, nickname or ID (every search audited, phones masked); lock,
+  suspend or unlock an account and grant or take away staff roles with a written
+  reason (a staff role needs confirmed 2FA, an admin cannot change their own
+  account, and a lock or lost role signs the person out at once); decide risk
+  reviews with the signals that caused them (restricted accounts need an
+  interactive CAPTCHA on every sign-in, banned ones are suspended); read the
+  audit log by actor, target, action family and dates. Lists use keyset cursors.
 - Errors are returned as RFC 9457 problem details with a stable `code` and request ID.
 - CI (format, lint, typecheck, tests with an 80% coverage gate, build) and security
   scanning (gitleaks, pnpm audit, OSV-Scanner, Semgrep, CodeQL); Renovate.
