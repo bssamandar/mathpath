@@ -12,6 +12,10 @@ const workerEnvSchema = z
     // The worker only consumes queues, so it cannot run without Redis.
     REDIS_URL: z.string().regex(/^rediss?:\/\//, 'expected a redis:// URL'),
     TRANSCODE_CONCURRENCY: z.coerce.number().int().min(1).max(8).default(1),
+    LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
+    APP_VERSION: z.string().default('0.0.0-dev'),
+    // Prometheus metrics on the private network; 0 turns them off.
+    WORKER_METRICS_PORT: z.coerce.number().int().min(0).max(65535).default(9465),
   })
   .extend(mediaEnvSchema.shape)
   .superRefine((env, ctx) => {

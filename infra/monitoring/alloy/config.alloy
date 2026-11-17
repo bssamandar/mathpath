@@ -1,0 +1,45 @@
+// Ships container logs to Loki. Only containers labelled
+// `logging=mathpath` are read, so other software on the host stays out.
+// The apps already write redacted JSON (packages/observability), so no
+// personal data needs scrubbing here.
+
+discovery.docker "containers" {
+  host = "unix:///var/run/docker.sock"
+  filter {
+    name   = "label"
+    values = ["logging=mathpath"]
+  }
+}
+
+discovery.relabel "containers" {
+  targets = discovery.docker.containers.targets
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    target_label  = "service"
+  }
+}
+
+loki.source.docker "containers" {
+  host          = "unix:///var/run/docker.sock"
+  targets       = discovery.relabel.containers.output
+  forward_to    = [loki.process.json.receiver]
+  relabel_rules = discovery.relabel.containers.rules
+}
+
+// Index only level and context as labels; everything else stays searchable
+// as JSON fields without creating new streams.
+loki.process "json" {
+  stage.json {
+    expressions = { level = "level", context = "context" }
+  }
+  stage.labels {
+    values = { level = "", context = "" }
+  }
+  forward_to = [loki.write.local.receiver]
+}
+
+loki.write "local" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}

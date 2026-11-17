@@ -8,6 +8,7 @@ import { RateLimiter } from '../common/rate-limiter';
 import type { Env } from '../config/env';
 import { BUSINESS_RULES, ENV } from '../config/tokens';
 import { DB } from '../database/database.module';
+import { METRICS, type Metrics } from '../observability/observability.module';
 import { CaptchaVerifier, DevCaptchaVerifier, TurnstileCaptchaVerifier } from './captcha';
 import { RiskService } from './risk.service';
 import { SmsBudget } from './sms-budget';
@@ -26,9 +27,9 @@ import { SmsBudget } from './sms-budget';
     },
     {
       provide: SmsBudget,
-      inject: [CounterStore, Clock, BUSINESS_RULES],
-      useFactory: (counters: CounterStore, clock: Clock, rules: AppConfig) =>
-        new SmsBudget(counters, clock, rules.risk.smsBudget),
+      inject: [CounterStore, Clock, BUSINESS_RULES, METRICS],
+      useFactory: (counters: CounterStore, clock: Clock, rules: AppConfig, metrics: Metrics) =>
+        new SmsBudget(counters, clock, rules.risk.smsBudget, metrics),
     },
     {
       provide: RiskService,

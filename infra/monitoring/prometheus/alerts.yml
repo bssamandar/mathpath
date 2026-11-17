@@ -1,0 +1,148 @@
+# Alert rules (security plan C-39; architecture §7.6). Thresholds are starting
+# values for launch traffic; tune them after the first weeks of real data.
+# Every mathpath_* and http_* metric used here must exist in
+# packages/observability/src/metrics.ts (checked by its tests).
+#
+# severity: page = act now (Telegram and email); warn = look today (email);
+# info = for the record (Telegram, no sound).
+groups:
+  - name: availability
+    rules:
+      - alert: ApiDown
+        expr: up{job="api"} == 0
+        for: 2m
+        labels: { severity: page }
+        annotations:
+          summary: 'API instance {{ $labels.instance }} is not answering metrics scrapes.'
+      - alert: WorkerDown
+        expr: up{job="worker"} == 0
+        for: 5m
+        labels: { severity: page }
+        annotations:
+          summary: 'Worker {{ $labels.instance }} is down: videos and weekly jobs stop.'
+      - alert: SiteUnreachable
+        expr: probe_success{job="blackbox"} == 0
+        for: 3m
+        labels: { severity: page }
+        annotations:
+          summary: '{{ $labels.instance }} fails its external HTTPS check.'
+      - alert: PostgresDown
+        expr: pg_up == 0
+        for: 1m
+        labels: { severity: page }
+        annotations:
+          summary: 'PostgreSQL is not reachable from the exporter.'
+      - alert: RedisDown
+        expr: redis_up == 0
+        for: 1m
+        labels: { severity: page }
+        annotations:
+          summary: 'Redis is not reachable: rate limits and sign-outs stop working across instances.'
+      - alert: HighErrorRate
+        expr: |
+          sum(rate(http_requests_total{job="api",status=~"5.."}[5m]))
+            / clamp_min(sum(rate(http_requests_total{job="api"}[5m])), 1) > 0.02
+        for: 10m
+        labels: { severity: page }
+        annotations:
+          summary: 'More than 2% of API requests fail with 5xx.'
+      - alert: SlowResponses
+        expr: |
+          histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{job="api"}[5m]))) > 1
+        for: 15m
+        labels: { severity: warn }
+        annotations:
+          summary: '95th percentile API response time is over 1 second.'
+      - alert: DiskAlmostFull
+        expr: node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay"} < 0.15
+        for: 30m
+        labels: { severity: warn }
+        annotations:
+          summary: 'Less than 15% disk left on {{ $labels.instance }} {{ $labels.mountpoint }}.'
+
+  - name: security
+    rules:
+      - alert: AuthErrorSpike
+        expr: sum(increase(http_requests_total{job="api",status=~"401|403"}[10m])) > 500
+        labels: { severity: warn }
+        annotations:
+          summary: 'Unusual number of 401/403 responses: {{ $value | humanize }} in 10 minutes.'
+      - alert: RateLimitSpike
+        expr: sum(increase(http_requests_total{job="api",status="429"}[10m])) > 300
+        labels: { severity: warn }
+        annotations:
+          summary: 'Many requests are rate-limited: possible scraping or SMS pumping.'
+      - alert: LoginFailureSpike
+        expr: sum(increase(mathpath_audit_events_total{action="auth.login_failed"}[15m])) > 100
+        labels: { severity: warn }
+        annotations:
+          summary: 'Over 100 failed sign-ins in 15 minutes: possible password guessing.'
+      - alert: RefreshTokenReused
+        expr: sum(increase(mathpath_audit_events_total{action="auth.refresh_token_reused"}[15m])) > 0
+        labels: { severity: warn }
+        annotations:
+          summary: 'A refresh token was reused (session revoked). Check the audit log for auth.refresh_token_reused.'
+      - alert: StaffRoleGranted
+        expr: sum(increase(mathpath_audit_events_total{action="user.role.grant"}[10m])) > 0
+        labels: { severity: info }
+        annotations:
+          summary: 'A staff or teacher role was granted. Confirm it in the studio audit log (action user.role.grant).'
+      - alert: AuditChainBroken
+        expr: max(mathpath_audit_chain_broken) == 1
+        labels: { severity: page }
+        annotations:
+          summary: 'The audit log hash chain is broken: someone may have changed or deleted entries.'
+      - alert: AuditCheckNotRunning
+        expr: |
+          time() - max(mathpath_job_last_success_timestamp_seconds{task="audit_chain_check"}) > 26 * 3600
+            or absent(mathpath_job_last_success_timestamp_seconds{task="audit_chain_check"})
+        for: 1h
+        labels: { severity: warn }
+        annotations:
+          summary: 'The daily audit chain check has not finished for over 26 hours.'
+
+  - name: money
+    rules:
+      - alert: SmsSpendHourly
+        expr: |
+          sum(increase(mathpath_sms_spend_tiyin_total[1h]))
+            > 0.7 * max(mathpath_sms_budget_tiyin{period="hourly"})
+        labels: { severity: page }
+        annotations:
+          summary: 'SMS spend passed 70% of the hourly cap; at 100% every code request needs a CAPTCHA.'
+      - alert: SmsSpendDaily
+        expr: |
+          sum(increase(mathpath_sms_spend_tiyin_total[24h]))
+            > 0.7 * max(mathpath_sms_budget_tiyin{period="daily"})
+        labels: { severity: warn }
+        annotations:
+          summary: 'SMS spend passed 70% of the daily cap.'
+
+  - name: jobs
+    rules:
+      - alert: BackupMissing
+        expr: |
+          time() - mathpath_backup_last_success_timestamp_seconds > 26 * 3600
+            or absent(mathpath_backup_last_success_timestamp_seconds)
+        for: 30m
+        labels: { severity: page }
+        annotations:
+          summary: 'No successful database backup in the last 26 hours.'
+      - alert: CertificateExpiresSoon
+        expr: probe_ssl_earliest_cert_expiry{job="blackbox"} - time() < 14 * 86400
+        labels: { severity: warn }
+        annotations:
+          summary: 'TLS certificate for {{ $labels.instance }} expires in under 14 days.'
+      - alert: LeagueCloseNotRunning
+        expr: |
+          time() - max(mathpath_job_last_success_timestamp_seconds{task="league_close"}) > 8 * 86400
+            or absent(mathpath_job_last_success_timestamp_seconds{task="league_close"})
+        for: 1h
+        labels: { severity: warn }
+        annotations:
+          summary: 'The weekly league close has not finished for over 8 days.'
+      - alert: TranscodeErrors
+        expr: sum(increase(mathpath_transcode_jobs_total{outcome="error"}[1h])) > 3
+        labels: { severity: warn }
+        annotations:
+          summary: 'Video transcoding keeps failing; authors cannot publish videos.'

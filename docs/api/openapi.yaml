@@ -81,6 +81,29 @@ paths:
                   status: { type: string, const: ok }
                   version: { type: string }
 
+  /health/ready:
+    get:
+      tags: [Platform]
+      operationId: getReadiness
+      summary: 'Readiness check: the database and Redis answer within 2 seconds.'
+      description: |
+        For the load balancer, which stops sending traffic to an instance that
+        returns 503. Says which dependency is down, never why. The reverse
+        proxy keeps it off the public internet.
+      security: []
+      x-permission: public
+      responses:
+        '200':
+          description: Ready.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Readiness' }
+        '503':
+          description: A dependency is down.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Readiness' }
+
   # ───────────────────────────── Auth ─────────────────────────────
   /auth/otp:
     post:
@@ -3459,6 +3482,18 @@ components:
         mfaEnabled: { type: boolean }
         createdAt: { type: string, format: date-time }
         lastLoginAt: { type: [string, 'null'], format: date-time }
+
+    Readiness:
+      type: object
+      required: [status, checks]
+      properties:
+        status: { type: string, enum: [ok, down] }
+        checks:
+          type: object
+          required: [database, redis]
+          properties:
+            database: { type: string, enum: [ok, down] }
+            redis: { type: string, enum: [ok, down, not_configured] }
 
     ManagedRole:
       type: string

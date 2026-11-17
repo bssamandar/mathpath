@@ -17,6 +17,9 @@ const envSchema = z
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
     PORT: z.coerce.number().int().min(1).max(65535).default(4000),
     LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
+    // Prometheus metrics on a separate port for the private network only;
+    // 0 turns them off. Never route this port through the public proxy.
+    METRICS_PORT: z.coerce.number().int().min(0).max(65535).default(9464),
     // Comma-separated list of browser origins allowed to call the API (web, studio).
     CORS_ORIGINS: z
       .string()
