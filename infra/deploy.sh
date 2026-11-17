@@ -75,6 +75,7 @@ main() {
 JSON
   # SeaweedFS runs as root in its container and reads the file read-only.
   umask 022
+  write_pgbackrest_env
 
   # ── 5. Data services, migrations, grants, storage ────────────
   compose pull --quiet
@@ -94,6 +95,41 @@ JSON
   curl -fsS --retry 10 --retry-delay 3 --retry-all-errors -o /dev/null "https://$DOMAIN/api/v1/health" ||
     die "https://$DOMAIN/api/v1/health does not answer"
   log "deployed $version"
+}
+
+# Where pgBackRest keeps the backups (docs/guides/backups.md):
+#   BACKUP_MODE=s3     off-site S3-compatible storage; required for real users
+#   BACKUP_MODE=local  a volume on this server; only for a test server, because
+#                      losing the server loses the backups too
+write_pgbackrest_env() {
+  local file="$INFRA_DIR/pgbackrest.env"
+  case ${BACKUP_MODE:-s3} in
+    s3)
+      local key
+      for key in BACKUP_S3_ENDPOINT BACKUP_S3_BUCKET BACKUP_S3_ACCESS_KEY_ID BACKUP_S3_SECRET_ACCESS_KEY; do
+        [ -n "${!key:-}" ] || die "$key is empty in $ENV_FILE (or set BACKUP_MODE=local on a test server)"
+      done
+      umask 077
+      cat > "$file" <<ENV
+PGBACKREST_REPO1_TYPE=s3
+PGBACKREST_REPO1_PATH=/pgbackrest
+PGBACKREST_REPO1_S3_ENDPOINT=$BACKUP_S3_ENDPOINT
+PGBACKREST_REPO1_S3_REGION=${BACKUP_S3_REGION:-us-east-1}
+PGBACKREST_REPO1_S3_BUCKET=$BACKUP_S3_BUCKET
+PGBACKREST_REPO1_S3_KEY=$BACKUP_S3_ACCESS_KEY_ID
+PGBACKREST_REPO1_S3_KEY_SECRET=$BACKUP_S3_SECRET_ACCESS_KEY
+PGBACKREST_REPO1_S3_URI_STYLE=${BACKUP_S3_URI_STYLE:-path}
+ENV
+      umask 022
+      ;;
+    local)
+      log "WARNING: BACKUP_MODE=local keeps backups on this server only; use s3 before real users arrive"
+      umask 077
+      printf 'PGBACKREST_REPO1_TYPE=posix\nPGBACKREST_REPO1_PATH=/var/lib/pgbackrest\n' > "$file"
+      umask 022
+      ;;
+    *) die "BACKUP_MODE must be s3 or local, not ${BACKUP_MODE}" ;;
+  esac
 }
 
 main "$@"

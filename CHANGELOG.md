@@ -234,6 +234,9 @@ project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   and the worker. Guide: `docs/guides/reports.md`.
 - Launch checklist (`docs/guides/launch-checklist.md`): everything the owner
   must supply or confirm before going live.
+- `infra/server-setup.sh` prepares a fresh Ubuntu 24.04 server (updates,
+  firewall, Docker, cosign, checkout, `.env.prod` with generated secrets), and
+  `BACKUP_MODE=local` lets a test server run without off-site backup storage.
 - Errors are returned as RFC 9457 problem details with a stable `code` and request ID.
 - CI (format, lint, typecheck, tests with an 80% coverage gate, build) and security
   scanning (gitleaks, pnpm audit, OSV-Scanner, Semgrep, CodeQL); Renovate.

@@ -2,3 +2,4 @@ seaweedfs/s3.prod.json
 .env.prod
 release.env
 release.env.new
+pgbackrest.env

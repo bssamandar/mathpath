@@ -40,17 +40,11 @@ x-media-env: &media-env
   MEDIA_BROWSER_ORIGINS: https://${DOMAIN},https://studio.${DOMAIN}
 
 # pgBackRest reads every option from PGBACKREST_* variables (docs/guides/backups.md).
+# Where the backups go (off-site S3, or this server for a test server) is in
+# pgbackrest.env, which deploy.sh writes from BACKUP_MODE in .env.prod.
 x-pgbackrest-env: &pgbackrest-env
   PGBACKREST_STANZA: mathpath
   PGBACKREST_PG1_PATH: /var/lib/postgresql/data
-  PGBACKREST_REPO1_TYPE: s3
-  PGBACKREST_REPO1_PATH: /pgbackrest
-  PGBACKREST_REPO1_S3_ENDPOINT: ${BACKUP_S3_ENDPOINT:?}
-  PGBACKREST_REPO1_S3_REGION: ${BACKUP_S3_REGION:-us-east-1}
-  PGBACKREST_REPO1_S3_BUCKET: ${BACKUP_S3_BUCKET:?}
-  PGBACKREST_REPO1_S3_KEY: ${BACKUP_S3_ACCESS_KEY_ID:?}
-  PGBACKREST_REPO1_S3_KEY_SECRET: ${BACKUP_S3_SECRET_ACCESS_KEY:?}
-  PGBACKREST_REPO1_S3_URI_STYLE: ${BACKUP_S3_URI_STYLE:-path}
   PGBACKREST_REPO1_CIPHER_TYPE: aes-256-cbc
   PGBACKREST_REPO1_CIPHER_PASS: ${BACKUP_CIPHER_PASS:?}
   PGBACKREST_REPO1_RETENTION_FULL: ${BACKUP_RETENTION_FULL:-14}
@@ -71,6 +65,7 @@ networks:
 
 volumes:
   postgres: {}
+  pgbackrest: {}
   redis: {}
   seaweedfs: {}
   caddy-data: {}
@@ -234,6 +229,9 @@ services:
   postgres:
     image: ${IMAGE_POSTGRES:?}
     labels: { logging: mathpath }
+    env_file:
+      - path: pgbackrest.env
+        required: false
     environment:
       <<: *pgbackrest-env
       POSTGRES_USER: postgres
@@ -276,6 +274,8 @@ services:
     stop_grace_period: 60s
     volumes:
       - postgres:/var/lib/postgresql/data
+      # Used only with BACKUP_MODE=local.
+      - pgbackrest:/var/lib/pgbackrest
     # The entrypoint starts as root and drops to the postgres user.
     cap_drop: [ALL]
     cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID]
@@ -405,10 +405,14 @@ services:
     image: ${IMAGE_POSTGRES:?}
     profiles: [tasks]
     entrypoint: [bash, /drill/restore-drill.sh]
+    env_file:
+      - path: pgbackrest.env
+        required: false
     environment:
       <<: *pgbackrest-env
     volumes:
       - ./backup/restore-drill.sh:/drill/restore-drill.sh:ro
+      - pgbackrest:/var/lib/pgbackrest
       - type: volume
         target: /drill/data
     networks: [backup]

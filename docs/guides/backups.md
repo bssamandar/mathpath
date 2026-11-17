@@ -25,6 +25,16 @@ failure, which meets the 15-minute RPO.
 | Off-site storage at a second provider in Uzbekistan | The same provider, another bucket      | Survives the loss of the whole provider account or data centre; stays in the country as the law requires                                                              |
 | Monthly automated restore drill                     | Restore by hand when needed            | A backup is only proven by restoring it; the drill measures how long a restore really takes (RTO)                                                                     |
 
+## Test server without off-site storage
+
+`BACKUP_MODE=local` in `.env.prod` keeps the pgBackRest repository in a volume
+on the same server (`pgbackrest`), so WAL archiving and the restore drill work
+before a second provider is set up. The media bucket is not copied in this
+mode, so MediaBackupMissing fires. Losing the server loses these backups too:
+switch to `BACKUP_MODE=s3` before real users arrive. `deploy.sh` writes the
+matching settings to `infra/pgbackrest.env`; after a switch run it again and
+then `pgbackrest stanza-create` creates the new repository.
+
 ## Off-site storage (once)
 
 1. Create a bucket at a second S3-compatible provider in Uzbekistan.

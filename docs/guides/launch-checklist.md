@@ -33,7 +33,7 @@ Change these in a pull request; they are not secrets.
 
 ## 3. Server and domain
 
-Steps are in [deploy.md](deploy.md), "Server preparation".
+Steps are in [deploy.md](deploy.md), "Server preparation". `infra/server-setup.sh` does most of it.
 
 - [ ] A server in a data centre in Uzbekistan (start: 8 vCPU, 16 GB RAM,
       200 GB SSD, Ubuntu 24.04), hardened SSH, firewall 22/80/443.
@@ -54,6 +54,7 @@ Steps are in [backups.md](backups.md).
 - [ ] A bucket at a **second** S3-compatible provider in Uzbekistan, with
       versioning (and object lock if offered); `BACKUP_S3_*` and
       `BACKUP_CIPHER_PASS` in `.env.prod`.
+- [ ] `BACKUP_MODE=s3` in `.env.prod` (a test server may start with `local`).
 - [ ] Backup timers installed, the first backup run by hand, and one restore
       drill completed.
 
