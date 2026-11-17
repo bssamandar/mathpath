@@ -404,10 +404,13 @@ admin UI later, with an audit trail, if they change often.
 
 ### 7.6 Observability
 
-OpenTelemetry traces and metrics from the API and worker go to Prometheus/Grafana.
+Metrics from the API and worker go to Prometheus/Grafana through
+`prom-client` (step 7.1); OpenTelemetry tracing can be added later without
+changing the metric names.
 Structured JSON logs go to Loki, with personal data redacted at the logger.
-Errors go to a self-hosted Sentry-compatible tracker (GlitchTip), so that error
-payloads stay in the country. Every request carries a request ID, which is
+Errors are logged as JSON with their stack and alerted on by rate; a
+self-hosted Sentry-compatible tracker (GlitchTip) can be added later, so that
+error payloads still stay in the country. Details: docs/guides/monitoring.md. Every request carries a request ID, which is
 returned in error responses so support can trace a problem.
 
 ### 7.7 Security architecture (summary; details in Phase 4)

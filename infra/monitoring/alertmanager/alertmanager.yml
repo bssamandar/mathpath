@@ -1,0 +1,51 @@
+# Alert routing (security plan C-39): to the maintainer by Telegram and email.
+# Secrets are read from files mounted from ./secrets (not in Git):
+#   telegram_bot_token, smtp_password
+# Replace the chat ID, addresses and SMTP host before launch
+# (docs/guides/launch-checklist.md).
+global:
+  smtp_smarthost: 'smtp.example.uz:587'
+  smtp_from: 'alerts@mathpath.example'
+  smtp_auth_username: 'alerts@mathpath.example'
+  smtp_auth_password_file: /etc/alertmanager/secrets/smtp_password
+  smtp_require_tls: true
+
+route:
+  receiver: telegram-and-email
+  group_by: [alertname]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  routes:
+    - matchers: [severity="warn"]
+      receiver: email
+      repeat_interval: 12h
+    - matchers: [severity="info"]
+      receiver: telegram-quiet
+      repeat_interval: 24h
+
+receivers:
+  - name: telegram-and-email
+    telegram_configs:
+      - bot_token_file: /etc/alertmanager/secrets/telegram_bot_token
+        chat_id: -1000000000000 # placeholder: replace with the maintainer's chat ID
+        parse_mode: ''
+        send_resolved: true
+    email_configs:
+      - to: 'maintainer@mathpath.example'
+        send_resolved: true
+  - name: email
+    email_configs:
+      - to: 'maintainer@mathpath.example'
+  - name: telegram-quiet
+    telegram_configs:
+      - bot_token_file: /etc/alertmanager/secrets/telegram_bot_token
+        chat_id: -1000000000000 # placeholder: replace with the maintainer's chat ID
+        parse_mode: ''
+        disable_notifications: true
+
+# A page silences the matching warning, so one problem sends one message.
+inhibit_rules:
+  - source_matchers: [severity="page"]
+    target_matchers: [severity="warn"]
+    equal: [alertname]

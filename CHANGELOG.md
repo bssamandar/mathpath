@@ -185,6 +185,14 @@ project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   reviews with the signals that caused them (restricted accounts need an
   interactive CAPTCHA on every sign-in, banned ones are suspended); read the
   audit log by actor, target, action family and dates. Lists use keyset cursors.
+- Monitoring (`packages/observability`, `infra/monitoring`): JSON logs with
+  phone numbers, tokens and personal fields redacted; Prometheus metrics for
+  the API and worker on private ports (requests by route pattern, response
+  times, audit events, SMS spend against the caps, video jobs, scheduled
+  tasks); `GET /health/ready`; a nightly audit hash-chain check in the worker;
+  Prometheus, Alertmanager (Telegram and email), Loki, Alloy and Grafana with
+  alert rules for the security plan's C-39 list and an overview dashboard.
+  CI checks the monitoring configs. Guide: `docs/guides/monitoring.md`.
 - Errors are returned as RFC 9457 problem details with a stable `code` and request ID.
 - CI (format, lint, typecheck, tests with an 80% coverage gate, build) and security
   scanning (gitleaks, pnpm audit, OSV-Scanner, Semgrep, CodeQL); Renovate.

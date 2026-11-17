@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AdminModule } from './admin/admin.module';
+import { ObservabilityModule } from './observability/observability.module';
 import { AssessmentModule } from './assessment/assessment.module';
 import { AuditModule } from './audit/audit.module';
 import { BillingModule } from './billing/billing.module';
@@ -24,6 +25,7 @@ import { LearningModule } from './learning/learning.module';
 @Module({
   imports: [
     AppConfigModule,
+    ObservabilityModule,
     DatabaseModule,
     RedisModule,
     CommonModule,

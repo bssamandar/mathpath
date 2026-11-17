@@ -12,6 +12,8 @@ export interface ConsumerOptions {
   concurrency: number;
   /** Redis key prefix; tests use their own. */
   prefix?: string;
+  /** Called with each job's outcome (`error` when it threw), for metrics. */
+  onOutcome?: (outcome: 'ready' | 'rejected' | 'skipped' | 'error') => void;
 }
 
 export function startTranscodeConsumer(
@@ -24,6 +26,7 @@ export function startTranscodeConsumer(
     async (job: Job<TranscodeJob>) => {
       const finalAttempt = job.attemptsMade + 1 >= (job.opts.attempts ?? 1);
       const result = await transcoder.run(job.data.mediaId, finalAttempt);
+      options.onOutcome?.(result.outcome);
       logger.log(
         `video ${job.data.mediaId}: ${result.outcome}${result.reason ? ` (${result.reason})` : ''}`,
       );
@@ -39,6 +42,7 @@ export function startTranscodeConsumer(
     },
   );
   worker.on('failed', (job, error) => {
+    options.onOutcome?.('error');
     logger.error(`video ${job?.data.mediaId ?? '?'} failed: ${error.message}`);
   });
   return worker;

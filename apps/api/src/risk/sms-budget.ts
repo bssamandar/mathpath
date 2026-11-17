@@ -7,6 +7,7 @@
  * OTP request needs a CAPTCHA until the period ends ("circuit breaker").
  */
 import type { AppConfig } from '@mathpath/config';
+import type { Metrics } from '@mathpath/observability';
 import { Logger } from '@nestjs/common';
 import type { Clock } from '../common/clock';
 import type { CounterStore } from '../common/counter-store';
@@ -22,7 +23,12 @@ export class SmsBudget {
     private readonly counters: CounterStore,
     private readonly clock: Clock,
     private readonly rules: AppConfig['risk']['smsBudget'],
-  ) {}
+    private readonly metrics?: Metrics,
+  ) {
+    // The caps go to Prometheus too, so the alert rules compare against config.
+    metrics?.smsBudget.set({ period: 'hourly' }, rules.hourlyCapTiyin);
+    metrics?.smsBudget.set({ period: 'daily' }, rules.dailyCapTiyin);
+  }
 
   /** True when the hourly or daily cap has been reached. */
   async exhausted(): Promise<boolean> {
@@ -34,6 +40,8 @@ export class SmsBudget {
   /** Records one sent SMS and alerts when a threshold is crossed. */
   async spend(): Promise<void> {
     const cost = this.rules.costPerSmsTiyin;
+    this.metrics?.smsSent.inc();
+    this.metrics?.smsSpend.inc(cost);
     const { hour, day } = this.keys();
     const [hourly, daily] = await Promise.all([
       this.counters.add(hour, cost, HOUR_MS),

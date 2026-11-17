@@ -17,6 +17,7 @@
     "@mathpath/config": "workspace:*",
     "@mathpath/db": "workspace:*",
     "@mathpath/media": "workspace:*",
+    "@mathpath/observability": "workspace:*",
     "@mathpath/questions": "workspace:*",
     "@nestjs/common": "11.2.8",
     "@nestjs/core": "11.2.8",

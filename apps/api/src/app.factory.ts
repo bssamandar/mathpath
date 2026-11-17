@@ -7,6 +7,8 @@ import helmet from 'helmet';
 import { ProblemFilter } from './common/problem';
 import type { Env } from './config/env';
 import { ENV } from './config/tokens';
+import { httpMetrics, type RequestLogger } from './observability/http-metrics';
+import { METRICS, type Metrics } from './observability/observability.module';
 
 /** All public routes live under this prefix (see docs/api/openapi.yaml). */
 export const API_PREFIX = 'api/v1';
@@ -16,9 +18,13 @@ export const API_PREFIX = 'api/v1';
  * security headers we test are exactly the ones we ship.
  *
  * @param app - A freshly created Nest application (Express adapter).
+ * @param requestLogger - Where failed and slow requests are logged (main.ts passes the JSON logger).
  * @returns The same application, configured.
  */
-export function configureApp(app: NestExpressApplication): INestApplication {
+export function configureApp(
+  app: NestExpressApplication,
+  requestLogger?: RequestLogger,
+): INestApplication {
   const env = app.get<Env>(ENV);
 
   app.setGlobalPrefix(API_PREFIX);
@@ -35,6 +41,8 @@ export function configureApp(app: NestExpressApplication): INestApplication {
     res.setHeader('X-Request-Id', id);
     next();
   });
+  // Counts and times every request; logs the failed and slow ones (C-34).
+  app.use(httpMetrics(app.get<Metrics>(METRICS), requestLogger));
   app.use(cookieParser());
   app.useGlobalFilters(new ProblemFilter());
   // Security headers (security plan C-15). The API serves JSON only, so its

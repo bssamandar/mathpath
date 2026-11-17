@@ -1,3 +1,10 @@
+export {
+  canonicalJson,
+  type ChainCheck,
+  entryHash,
+  type HashedFields,
+  verifyAuditChain,
+} from './audit-chain';
 export { createDb, type CreateDbOptions } from './client';
 export { newId } from './ids';
 export {
