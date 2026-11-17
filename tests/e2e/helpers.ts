@@ -9,9 +9,31 @@ export const WEB_URL = process.env.WEB_URL ?? 'http://localhost:3000';
 export const STUDIO_URL = process.env.STUDIO_URL ?? 'http://localhost:3001';
 const API_LOG = process.env.E2E_API_LOG ?? '/var/tmp/mp-api.log';
 
-/** A fresh Uzbek mobile number (9 digits after +998), so runs never collide. */
+/** How the log sender shows a number (+99890*****67): operator code and last two digits. */
+const maskPattern = (phone: string) => `To \\+998${phone.slice(0, 2)}\\*+${phone.slice(-2)}: `;
+
+/**
+ * A fresh Uzbek mobile number (9 digits after +998). The API log masks all but
+ * the operator code and the last two digits, so a number whose mask already
+ * appears in the log (or was handed out in this process) is skipped: otherwise
+ * `smsCode` could read another account's code. That allows 100 numbers per run.
+ */
+const handedOut = new Set<string>();
 export function newPhone(): string {
-  return `90${String(randomInt(0, 10_000_000)).padStart(7, '0')}`;
+  let log = '';
+  try {
+    log = readFileSync(API_LOG, 'utf8');
+  } catch {
+    // No log yet: nothing to collide with.
+  }
+  for (let tries = 0; tries < 1000; tries++) {
+    const phone = `90${String(randomInt(0, 10_000_000)).padStart(7, '0')}`;
+    const mask = phone.slice(-2);
+    if (handedOut.has(mask) || new RegExp(maskPattern(phone)).test(log)) continue;
+    handedOut.add(mask);
+    return phone;
+  }
+  throw new Error('no unused phone mask left; start the e2e stack with a fresh API log');
 }
 
 const usedCodes = new Set<string>();
@@ -23,10 +45,7 @@ const usedCodes = new Set<string>();
  * because the log is written after the response.
  */
 export async function smsCode(phone: string): Promise<string> {
-  const masked = new RegExp(
-    `To \\+998${phone.slice(0, 2)}\\*+${phone.slice(-2)}: .*?(\\d{6})`,
-    'g',
-  );
+  const masked = new RegExp(`${maskPattern(phone)}.*?(\\d{6})`, 'g');
   for (let i = 0; i < 20; i++) {
     const codes = [...readFileSync(API_LOG, 'utf8').matchAll(masked)];
     const code = codes.at(-1)?.[1];
