@@ -115,17 +115,19 @@ Steps are in [backups.md](backups.md).
 
 - [ ] Tag a release (`deploy.md`, "Releasing") and run `infra/deploy.sh <tag>`.
 - [ ] **First admin.** Sign up in the web app with your own phone, then grant
-      the role once in the database (every later role is granted in the
-      studio, with 2FA and an audit entry):
-      `sh
-infra/compose.sh exec -u postgres postgres psql -d mathpath -c \
-  "INSERT INTO user_roles (user_id, role) SELECT id, 'admin' FROM users WHERE phone_e164 = '+998XXXXXXXXX'"
-`
-      Then sign in to `studio.DOMAIN` and enrol 2FA; keep the recovery codes
-      offline.
+      the role once in the database with the command below (every later role
+      is granted in the studio, with 2FA and an audit entry). Then sign in to
+      `studio.DOMAIN` and enrol 2FA; keep the recovery codes offline.
 - [ ] Monitoring stack started with its four secrets, the Telegram chat ID,
       SMTP settings and the real domain in the probes
       ([monitoring.md](monitoring.md)). Send a test alert and see it arrive.
+
+First admin command:
+
+```sh
+infra/compose.sh exec -u postgres postgres psql -d mathpath -c \
+  "INSERT INTO user_roles (user_id, role) SELECT id, 'admin' FROM users WHERE phone_e164 = '+998XXXXXXXXX'"
+```
 
 ## 9. Before opening to the public
 
