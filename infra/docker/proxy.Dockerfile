@@ -5,7 +5,7 @@
 # - coraza-caddy: OWASP Coraza WAF with the OWASP Core Rule Set compiled in.
 # - caddy-ratelimit: per-IP flood limit at the edge.
 #
-# The last two --with lines raise indirect dependencies to versions with
+# The two --replace lines raise indirect dependencies to versions with
 # security fixes (HIGH findings from the image scan); drop them once Caddy
 # itself requires those versions.
 #
@@ -18,8 +18,8 @@ FROM caddy:2.11.8-builder@sha256:d4eb070c36154bd2d4c94b40359a03c6168346d5af54049
 RUN xcaddy build v2.11.8 \
     --with github.com/corazawaf/coraza-caddy/v2@v2.6.2 \
     --with github.com/mholt/caddy-ratelimit@v0.1.0 \
-    --with golang.org/x/net@v0.62.0 \
-    --with github.com/go-jose/go-jose/v4@v4.1.7
+    --replace golang.org/x/net=golang.org/x/net@v0.62.0 \
+    --replace github.com/go-jose/go-jose/v4=github.com/go-jose/go-jose/v4@v4.1.7
 
 FROM caddy:2.11.8@sha256:4fcafa98afd1c2e642e353e3c5cf9ddbe892fcee14bc990e7ba2c5b78e51f9cf
 COPY --from=build /usr/bin/caddy /usr/bin/caddy
