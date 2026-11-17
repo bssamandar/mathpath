@@ -27,7 +27,7 @@ RUN pnpm install --frozen-lockfile \
  && cp -r "apps/${APP}/.next/standalone/." /out/ \
  && cp -r "apps/${APP}/.next/static" "/out/apps/${APP}/.next/static"
 
-FROM gcr.io/distroless/nodejs22-debian12:nonroot@sha256:13593b7570658e8477de39e2f4a1dd25db2f836d68a0ba771251572d23bb4f8e
+FROM gcr.io/distroless/nodejs22-debian13:nonroot@sha256:39c66687298417dbf3ff2fb8b6012c20554494e16414ef7afd07b9abbb45b501
 ARG APP
 # Files stay owned by root, so the app cannot change its own code. Next.js
 # writes only to .next/cache, which compose mounts as a tmpfs.
