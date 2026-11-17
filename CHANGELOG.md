@@ -232,6 +232,8 @@ project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   week (`report_sms_log`), failures are not retried, its own metric and the
   ReportSmsFailing alert. SMS code moved to `@mathpath/sms`, shared by the API
   and the worker. Guide: `docs/guides/reports.md`.
+- Launch checklist (`docs/guides/launch-checklist.md`): everything the owner
+  must supply or confirm before going live.
 - Errors are returned as RFC 9457 problem details with a stable `code` and request ID.
 - CI (format, lint, typecheck, tests with an 80% coverage gate, build) and security
   scanning (gitleaks, pnpm audit, OSV-Scanner, Semgrep, CodeQL); Renovate.
