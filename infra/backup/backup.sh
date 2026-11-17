@@ -33,6 +33,13 @@ mathpath_backup_last_success_timestamp_seconds $finished
 mathpath_backup_duration_seconds $((finished - started))
 METRICS
 
+# shellcheck disable=SC1090
+mode=$(set -a && source "$ENV_FILE" && echo "${BACKUP_MODE:-s3}")
+if [ "$mode" = local ]; then
+  log "BACKUP_MODE=local: the media bucket is not copied (no off-site storage)"
+  exit 0
+fi
+
 log "media bucket sync"
 MEDIA_BACKUP_DAY=$(date -u +%Y-%m-%d) compose run --rm media-backup
 write_metrics mathpath_media_backup <<METRICS

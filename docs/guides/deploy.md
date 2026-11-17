@@ -34,6 +34,18 @@ Use Ubuntu 24.04 LTS in a data centre in Uzbekistan (the personal data law,
 architecture §2). Start with 8 vCPU, 16 GB RAM and 200 GB SSD; video
 transcoding is the main CPU user.
 
+`infra/server-setup.sh` does steps 2–6 and 8 below on a fresh server and
+asks only for what it cannot generate (domain, Eskiz, Turnstile, backup mode):
+
+```sh
+curl -fsSLO https://raw.githubusercontent.com/bssamandar/mathpath/main/infra/server-setup.sh
+less server-setup.sh   # read it before running it
+sudo bash server-setup.sh
+```
+
+It never changes the SSH settings (step 1 stays yours), keeps an existing
+`.env.prod`, and prints the DNS records to create. The steps it automates:
+
 1. **SSH:** key-only login, no root login (`PermitRootLogin no`,
    `PasswordAuthentication no`). Keep an admin user with sudo.
 2. **Firewall:** allow only 22 (from your own IPs if possible), 80 and 443:
