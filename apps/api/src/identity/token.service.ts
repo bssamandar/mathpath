@@ -1,8 +1,8 @@
 /**
  * Signed tokens (ADR-0005, C-06).
  *
- * Access tokens and registration tickets are both EdDSA JWTs, but with
- * different audiences, so one can never be used in place of the other.
+ * Access tokens, registration tickets and password-reset tickets are all
+ * EdDSA JWTs, but with different audiences, so one can never be used in place of the other.
  */
 import type { Role } from '@mathpath/db';
 import { type JWTPayload, jwtVerify, SignJWT } from 'jose';
@@ -12,6 +12,7 @@ import type { AuthKeys } from './keys';
 const ISSUER = 'mathpath-api';
 const ACCESS_AUDIENCE = 'mathpath';
 const REGISTRATION_AUDIENCE = 'mathpath-registration';
+const PASSWORD_RESET_AUDIENCE = 'mathpath-password-reset';
 
 /** Verified claims of an access token. */
 export interface AccessClaims {
@@ -75,6 +76,34 @@ export class TokenService {
   async verifyRegistration(token: string): Promise<string | null> {
     const payload = await this.verify(token, REGISTRATION_AUDIENCE);
     return typeof payload?.sub === 'string' ? payload.sub : null;
+  }
+
+  /**
+   * Signs the ticket that proves a phone was verified for a password reset.
+   * `pwv` fingerprints the current password hash, so the ticket stops working
+   * as soon as the password changes: it can be used once.
+   */
+  async signPasswordReset(
+    userId: string,
+    challengeId: string,
+    passwordVersion: string,
+  ): Promise<SignedToken> {
+    return this.sign(
+      { jti: challengeId, pwv: passwordVersion },
+      userId,
+      PASSWORD_RESET_AUDIENCE,
+      this.ttl.registrationTokenTtlMinutes,
+    );
+  }
+
+  /** @returns The user ID and password fingerprint the ticket was issued for, or null. */
+  async verifyPasswordReset(
+    token: string,
+  ): Promise<{ userId: string; passwordVersion: string } | null> {
+    const payload = await this.verify(token, PASSWORD_RESET_AUDIENCE);
+    return typeof payload?.sub === 'string' && typeof payload.pwv === 'string'
+      ? { userId: payload.sub, passwordVersion: payload.pwv }
+      : null;
   }
 
   private async sign(

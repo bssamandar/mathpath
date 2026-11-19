@@ -23,7 +23,7 @@ const otpRequestBody = z
   .object({
     // Optional for confirm_action: the code then goes to the account's own number.
     phone: phoneE164.optional(),
-    purpose: z.enum(['signup', 'login', 'confirm_action']),
+    purpose: z.enum(['signup', 'login', 'reset_password', 'confirm_action']),
     captchaToken: z.string().max(4096).optional(),
     deviceToken: deviceToken.optional(),
   })
@@ -38,6 +38,13 @@ const otpVerifyBody = z
     challengeId: z.uuid(),
     code: z.string().regex(/^[0-9]{4,8}$/),
     deviceToken: deviceToken.optional(),
+  })
+  .strict();
+
+const passwordResetBody = z
+  .object({
+    resetToken: z.string().min(1).max(2048),
+    newPassword: z.string().min(1).max(1024),
   })
   .strict();
 
@@ -98,7 +105,10 @@ export class AuthController {
     });
   }
 
-  /** POST /auth/otp/verify: a registration ticket (signup) or a session (login). */
+  /**
+   * POST /auth/otp/verify: a registration ticket (signup), a reset ticket
+   * (reset_password) or a session (login).
+   */
   @Post('otp/verify')
   @Access('public')
   @HttpCode(200)
@@ -112,6 +122,12 @@ export class AuthController {
     if (result.kind === 'registration') {
       return {
         registrationToken: result.ticket.token,
+        expiresAt: result.ticket.expiresAt.toISOString(),
+      };
+    }
+    if (result.kind === 'password_reset') {
+      return {
+        resetToken: result.ticket.token,
         expiresAt: result.ticket.expiresAt.toISOString(),
       };
     }
@@ -130,6 +146,15 @@ export class AuthController {
     const body = parseInput(registerBody, raw);
     const session = await this.auth.register(body, clientOf(req));
     return this.respond(req, res, session);
+  }
+
+  /** POST /auth/password/reset: new password with a reset ticket; signs out everywhere. */
+  @Post('password/reset')
+  @Access('public')
+  @HttpCode(204)
+  async resetPassword(@Body() raw: unknown, @Req() req: Request): Promise<void> {
+    const body = parseInput(passwordResetBody, raw);
+    await this.auth.resetPassword(body.resetToken, body.newPassword, clientOf(req));
   }
 
   /** POST /auth/login: phone and password. */

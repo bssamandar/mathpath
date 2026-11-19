@@ -25,7 +25,7 @@ import type { SmsBudget } from '../risk/sms-budget';
  * `confirm_action` lets a signed-in parent prove possession of their phone
  * for an important action, such as giving consent for a child (C-30).
  */
-export type OtpRequestPurpose = 'signup' | 'login' | 'confirm_action';
+export type OtpRequestPurpose = 'signup' | 'login' | 'reset_password' | 'confirm_action';
 
 export interface OtpRequest {
   phone: string;
@@ -133,6 +133,8 @@ export class OtpService {
     if (purpose === 'signup')
       text = hasAccount ? smsMessages.alreadyRegistered() : smsMessages.otpCode(code);
     else if (purpose === 'confirm_action') text = smsMessages.confirmCode(code);
+    // reset_password + no account: like login, nothing is sent and nothing is revealed.
+    else if (purpose === 'reset_password') text = hasAccount ? smsMessages.resetCode(code) : null;
     else if (hasAccount) text = smsMessages.otpCode(code);
 
     if (text) {

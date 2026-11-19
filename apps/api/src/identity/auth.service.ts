@@ -5,6 +5,7 @@
 import type { AppConfig } from '@mathpath/config';
 import { type Database, type Locale, newId } from '@mathpath/db';
 import { Logger } from '@nestjs/common';
+import { createHash } from 'node:crypto';
 import type { Kysely } from 'kysely';
 import type { AuditService } from '../audit/audit.service';
 import type { Clock } from '../common/clock';
@@ -31,7 +32,15 @@ export interface RegisterInput {
 /** Result of a verified code: a sign-up ticket or a signed-in session. */
 export type OtpVerifyResult =
   | { kind: 'registration'; ticket: SignedToken }
+  | { kind: 'password_reset'; ticket: SignedToken }
   | { kind: 'session'; session: IssuedSession };
+
+/** Short fingerprint of the stored hash: changes whenever the password does. */
+const passwordVersion = (hash: string | null): string =>
+  createHash('sha256')
+    .update(hash ?? '')
+    .digest('base64url')
+    .slice(0, 22);
 
 const invalidCredentials = (): ProblemException =>
   new ProblemException(401, 'INVALID_CREDENTIALS', 'Phone number or password is not correct.');
@@ -66,7 +75,11 @@ export class AuthService {
     code: string,
     client: ClientContext,
   ): Promise<OtpVerifyResult> {
-    const verified = await this.otp.verify(challengeId, code, ['signup', 'login']);
+    const verified = await this.otp.verify(challengeId, code, [
+      'signup',
+      'login',
+      'reset_password',
+    ]);
     const user = await this.liveUserByPhone(verified.phone);
 
     if (verified.purpose === 'signup') {
@@ -81,7 +94,75 @@ export class AuthService {
 
     if (!user) throw invalidCredentials();
     this.assertActive(user.status);
+    if (verified.purpose === 'reset_password') {
+      return {
+        kind: 'password_reset',
+        ticket: await this.tokens.signPasswordReset(
+          user.id,
+          verified.challengeId,
+          passwordVersion(user.password_hash),
+        ),
+      };
+    }
     return { kind: 'session', session: await this.sessions.start(user.id, client, 'otp') };
+  }
+
+  /**
+   * Sets a new password with a reset ticket from /auth/otp/verify, and signs
+   * the account out everywhere. It does not sign in: the user signs in with the
+   * new password, and staff still pass 2FA there.
+   * @throws ProblemException 401 for a bad or used ticket, 422 for a weak password.
+   */
+  async resetPassword(
+    resetToken: string,
+    newPassword: string,
+    client: ClientContext,
+  ): Promise<void> {
+    const ticket = await this.tokens.verifyPasswordReset(resetToken);
+    const user = ticket
+      ? await this.db
+          .selectFrom('users')
+          .select(['id', 'phone_e164', 'password_hash', 'status'])
+          .where('id', '=', ticket.userId)
+          .where('deleted_at', 'is', null)
+          .executeTakeFirst()
+      : undefined;
+    if (
+      !ticket ||
+      !user?.phone_e164 ||
+      passwordVersion(user.password_hash) !== ticket.passwordVersion
+    ) {
+      throw new ProblemException(
+        401,
+        'RESET_EXPIRED',
+        'This reset link has expired or was already used. Request a new code.',
+      );
+    }
+    this.assertActive(user.status);
+    await this.passwords.assertAcceptable(newPassword, { phone: user.phone_e164 });
+
+    const passwordHash = await this.passwords.hash(newPassword);
+    // Only if the password is still the one the ticket was issued for, so two
+    // requests with the same ticket cannot both succeed.
+    const updated = await this.db
+      .updateTable('users')
+      .set({ password_hash: passwordHash })
+      .where('id', '=', user.id)
+      .where('password_hash', user.password_hash === null ? 'is' : '=', user.password_hash)
+      .executeTakeFirst();
+    if (Number(updated.numUpdatedRows) !== 1) {
+      throw new ProblemException(401, 'RESET_EXPIRED', 'This reset link was already used.');
+    }
+    const ended = await this.sessions.endAll(user.id, 'password_change');
+    await this.audit.record({
+      action: 'auth.password_reset',
+      actorId: user.id,
+      targetType: 'user',
+      targetId: user.id,
+      ipPrefix: client.ipPrefix,
+      requestId: client.requestId,
+      metadata: { sessionsEnded: ended },
+    });
   }
 
   /**
