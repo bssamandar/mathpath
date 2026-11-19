@@ -15,12 +15,15 @@ FROM node:22.23.4-bookworm-slim@sha256:5ec23b7c622b00547753bc6ffd78085dd868a68ae
 ARG APP
 # Public site key, inlined into the browser bundle at build time (not a secret).
 ARG NEXT_PUBLIC_TURNSTILE_SITE_KEY=
+# Telegram bot for sign-in codes (temporary, while SMS is off); empty hides it.
+ARG NEXT_PUBLIC_TELEGRAM_BOT=
 WORKDIR /repo
 RUN corepack enable
 COPY . .
 ENV NEXT_OUTPUT=standalone \
     NEXT_TELEMETRY_DISABLED=1 \
-    NEXT_PUBLIC_TURNSTILE_SITE_KEY=${NEXT_PUBLIC_TURNSTILE_SITE_KEY}
+    NEXT_PUBLIC_TURNSTILE_SITE_KEY=${NEXT_PUBLIC_TURNSTILE_SITE_KEY} \
+    NEXT_PUBLIC_TELEGRAM_BOT=${NEXT_PUBLIC_TELEGRAM_BOT}
 RUN pnpm install --frozen-lockfile \
  && pnpm --filter "@mathpath/${APP}..." build \
  && mkdir /out \
