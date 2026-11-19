@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { originOf, studioCsp } from './csp';
 import { isMessageKey, t } from './i18n';
-import { otpauthSecret } from './mfa';
+import { otpauthSecret, qrPath } from './mfa';
 
 describe('otpauthSecret', () => {
   it('groups the secret for typing', () => {
@@ -44,5 +44,15 @@ describe('studioCsp', () => {
     expect(originOf('::')).toBeUndefined();
     expect(originOf(undefined)).toBeUndefined();
     expect(originOf('http://localhost:8333/x')).toBe('http://localhost:8333');
+  });
+});
+
+describe('qrPath', () => {
+  it('draws an otpauth URI with a quiet zone, starting at the finder pattern', () => {
+    const { size, d } = qrPath(
+      'otpauth://totp/MathPath:%2B998901234567?secret=JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP&issuer=MathPath',
+    );
+    expect((size - 8 - 17) % 4).toBe(0); // 17 + 4·version modules per side
+    expect(d.startsWith('M4 4h1v1h-1z')).toBe(true);
   });
 });

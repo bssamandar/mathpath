@@ -699,3 +699,11 @@ input.code {
 .topbar nav {
   flex-wrap: wrap;
 }
+
+/* Authenticator QR code on the 2FA enrolment screen. */
+.qr {
+  display: block;
+  width: 220px;
+  height: 220px;
+  max-width: 100%;
+}
