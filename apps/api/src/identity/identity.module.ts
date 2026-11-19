@@ -38,7 +38,19 @@ import { MemoryRevokedSessions, RedisRevokedSessions, RevokedSessions } from './
 import { EskizSmsSender } from './sms/eskiz-sms-sender';
 import { SessionService } from './session.service';
 import { LogSmsSender, SmsSender } from './sms/sms-sender';
+import {
+  redisTelegramStore,
+  TelegramBotApi,
+  TelegramBotPoller,
+  TelegramSmsSender,
+} from './sms/telegram-sms-sender';
 import { TokenService } from './token.service';
+
+/** The Telegram links must survive restarts and be shared by all instances. */
+function requireRedis(redis: Redis | null): Redis {
+  if (!redis) throw new Error('SMS_PROVIDER=telegram needs REDIS_URL');
+  return redis;
+}
 
 @Module({
   controllers: [AuthController, MfaController],
@@ -46,16 +58,33 @@ import { TokenService } from './token.service';
     { provide: AuthKeys, inject: [ENV], useFactory: (env: Env) => AuthKeys.fromEnv(env) },
     {
       provide: SmsSender,
-      inject: [ENV],
-      useFactory: (env: Env): SmsSender =>
-        env.SMS_PROVIDER === 'eskiz'
-          ? new EskizSmsSender({
-              email: env.ESKIZ_EMAIL!,
-              password: env.ESKIZ_PASSWORD!,
-              sender: env.ESKIZ_SENDER,
-              log: (line) => new Logger('EskizSmsSender').log(line),
-            })
-          : new LogSmsSender(),
+      inject: [ENV, REDIS],
+      useFactory: (env: Env, redis: Redis | null): SmsSender =>
+        env.SMS_PROVIDER === 'telegram'
+          ? new TelegramSmsSender(
+              new TelegramBotApi(env.TELEGRAM_BOT_TOKEN!),
+              redisTelegramStore(requireRedis(redis)),
+            )
+          : env.SMS_PROVIDER === 'eskiz'
+            ? new EskizSmsSender({
+                email: env.ESKIZ_EMAIL!,
+                password: env.ESKIZ_PASSWORD!,
+                sender: env.ESKIZ_SENDER,
+                log: (line) => new Logger('EskizSmsSender').log(line),
+              })
+            : new LogSmsSender(),
+    },
+    {
+      // Receives /start and shared phone numbers; only with SMS_PROVIDER=telegram.
+      provide: TelegramBotPoller,
+      inject: [ENV, REDIS],
+      useFactory: (env: Env, redis: Redis | null): TelegramBotPoller | object =>
+        env.SMS_PROVIDER === 'telegram'
+          ? new TelegramBotPoller(
+              new TelegramBotApi(env.TELEGRAM_BOT_TOKEN!),
+              redisTelegramStore(requireRedis(redis)),
+            )
+          : {},
     },
     {
       provide: RevokedSessions,

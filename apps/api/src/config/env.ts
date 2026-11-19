@@ -54,8 +54,14 @@ const envSchema = z
     // Shared state for rate limits, revoked sessions and SMS budgets.
     REDIS_URL: optionalSecret(z.string().regex(/^rediss?:\/\//, 'expected a redis:// URL')),
 
-    // `log` prints SMS to the console for local development only.
-    SMS_PROVIDER: z.enum(['log', 'eskiz']).default('log'),
+    // `log` prints SMS to the console for local development only. `telegram`
+    // sends the same texts through a Telegram bot instead of SMS (temporary,
+    // until Eskiz is set up); the user links their phone in the bot first.
+    SMS_PROVIDER: z.enum(['log', 'eskiz', 'telegram']).default('log'),
+    // Bot token from @BotFather, required for SMS_PROVIDER=telegram.
+    TELEGRAM_BOT_TOKEN: optionalSecret(
+      z.string().regex(/^\d+:[\w-]{30,}$/, 'expected a bot token like 123456:AA...'),
+    ),
     ESKIZ_EMAIL: optionalSecret(z.string().min(3)),
     ESKIZ_PASSWORD: optionalSecret(z.string().min(1)),
     ESKIZ_SENDER: z.string().min(1).max(11).default('4546'),
@@ -109,6 +115,13 @@ const envSchema = z
       for (const key of ['ESKIZ_EMAIL', 'ESKIZ_PASSWORD'] as const) {
         if (!env[key]) ctx.addIssue({ code: 'custom', path: [key], message: 'required for Eskiz' });
       }
+    }
+    if (env.SMS_PROVIDER === 'telegram' && !env.TELEGRAM_BOT_TOKEN) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['TELEGRAM_BOT_TOKEN'],
+        message: 'required for Telegram',
+      });
     }
     if (env.PAYMENT_PROVIDERS.includes('payme')) {
       for (const key of ['PAYME_MERCHANT_ID', 'PAYME_KEY'] as const) {
