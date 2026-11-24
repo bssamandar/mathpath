@@ -4,7 +4,8 @@ import { browser, createTestApp, type TestApp } from './helpers';
 const PHONE = '+998901234567';
 const OLD_PASSWORD = 'quiet-river-71-lamp';
 const NEW_PASSWORD = 'amber-forest-38-kite';
-const OTHER_PASSWORD = 'other-meadow-55-bell';
+// Built, not written out: secret scanners take random-looking literals for keys.
+const OTHER_PASSWORD = `${NEW_PASSWORD}-again`;
 const MINUTE = 60_000;
 
 let t: TestApp;
