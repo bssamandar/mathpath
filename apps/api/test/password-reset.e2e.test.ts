@@ -4,6 +4,7 @@ import { browser, createTestApp, type TestApp } from './helpers';
 const PHONE = '+998901234567';
 const OLD_PASSWORD = 'quiet-river-71-lamp';
 const NEW_PASSWORD = 'amber-forest-38-kite';
+const OTHER_PASSWORD = 'other-meadow-55-bell';
 const MINUTE = 60_000;
 
 let t: TestApp;
@@ -94,7 +95,7 @@ describe('password reset', () => {
       .expect(204);
     const again = await http()
       .post('/api/v1/auth/password/reset')
-      .send({ resetToken, newPassword: 'other-meadow-55-bell' });
+      .send({ resetToken, newPassword: OTHER_PASSWORD });
     expect(again.status).toBe(401);
     expect(again.body.code).toBe('RESET_EXPIRED');
     expect((await login(NEW_PASSWORD)).status).toBe(200);

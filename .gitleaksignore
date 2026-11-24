@@ -8,3 +8,7 @@
 # A fixed Idempotency-Key (a random UUID) in an attempts test, not a secret;
 # generated at run time from the next commit on.
 2760cb00bbb2264aa9a12c36ffd7d25bac49f7ed:apps/api/test/attempts.e2e.test.ts:generic-api-key:164
+
+# A made-up password ('other-meadow-55-bell') inline in the password-reset
+# test, not a secret; moved into a constant in the next commit.
+18e6b58ff9e4fc05c845266ec0e7be596efca6a9:apps/api/test/password-reset.e2e.test.ts:generic-api-key:97
