@@ -6,6 +6,7 @@ import { type FormEvent, useState } from 'react';
 import { Captcha } from '../../components/captcha';
 import { useI18n } from '../../components/i18n-provider';
 import { PhoneInput, TextInput } from '../../components/inputs';
+import { TelegramCard } from '../../components/telegram-card';
 import { Button, ErrorText, Screen } from '../../components/ui';
 import { useRequest } from '../../components/use-request';
 import { api, homeFor, rememberSession, type SessionInfo } from '../../lib/api';
@@ -50,9 +51,13 @@ export default function LoginPage() {
         <Button type="submit" busy={busy}>
           {t('login.submit')}
         </Button>
+        <Link href="/reset-password" className="text-link">
+          {t('login.forgot')}
+        </Link>
         <Link href="/signup" className="text-link">
           {t('login.noAccount')}
         </Link>
+        <TelegramCard purpose="login" />
       </form>
     </Screen>
   );

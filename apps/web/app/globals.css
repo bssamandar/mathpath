@@ -892,3 +892,33 @@ section.done {
   background: var(--color-surface);
   color: var(--color-text);
 }
+
+/* Sign-in codes by Telegram (components/telegram-card.tsx). */
+.telegram-card {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--space) * 4);
+  padding: calc(var(--space) * 4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-muted-surface);
+}
+.telegram-card h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+.telegram-qr {
+  flex: none;
+  width: 132px;
+  height: 132px;
+  border-radius: calc(var(--radius) / 2);
+}
+.telegram-text {
+  gap: calc(var(--space) * 2);
+}
+/* On a phone the QR cannot be scanned by the same phone: show the button only. */
+@media (max-width: 480px) {
+  .telegram-qr {
+    display: none;
+  }
+}

@@ -59,6 +59,10 @@
 		directives `
 			Include @coraza.conf-recommended
 			Include @crs-setup.conf.example
+			# The API uses PUT and PATCH (admin user changes, content edits); the
+			# CRS default allows only GET HEAD POST OPTIONS and blocks the rest
+			# with rule 911100. Set before the rules are loaded.
+			SecAction "id:900200,phase:1,pass,t:none,nolog,setvar:'tx.allowed_methods=GET HEAD POST OPTIONS PUT PATCH'"
 			Include @owasp_crs/*.conf
 			SecRuleEngine On
 			SecAuditEngine Off

@@ -17,6 +17,7 @@
     "hls.js": "1.7.4",
     "katex": "0.18.11",
     "next": "15.5.29",
+    "qrcode-generator": "2.0.4",
     "react": "19.1.10",
     "react-dom": "19.1.10"
   },

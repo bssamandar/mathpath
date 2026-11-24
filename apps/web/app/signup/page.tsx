@@ -5,6 +5,7 @@ import { type FormEvent, useEffect, useState } from 'react';
 import { Captcha } from '../../components/captcha';
 import { useI18n } from '../../components/i18n-provider';
 import { CodeInput, PhoneInput, TextInput } from '../../components/inputs';
+import { TelegramCard, telegramEnabled } from '../../components/telegram-card';
 import { Button, ErrorText, Screen } from '../../components/ui';
 import { useRequest } from '../../components/use-request';
 import { api, homeFor, rememberSession, type SessionInfo } from '../../lib/api';
@@ -97,18 +98,25 @@ export default function SignupPage() {
     <Screen title={step === 'details' ? t('signup.detailsTitle') : t('signup.title')}>
       <form onSubmit={onSubmit} className="stack" noValidate={step === 'phone'}>
         {step === 'phone' && (
-          <PhoneInput
-            label={t('phone.label')}
-            hint={t('phone.hint')}
-            digits={digits}
-            onChange={setDigits}
-          />
+          <>
+            <TelegramCard purpose="signup" />
+            <PhoneInput
+              label={t('phone.label')}
+              hint={t(telegramEnabled ? 'phone.hintTelegram' : 'phone.hint')}
+              digits={digits}
+              onChange={setDigits}
+            />
+          </>
         )}
         {step === 'code' && (
           <>
-            <p>{t('otp.sentTo', { phone: `+998 ${formatPhone(digits)}` })}</p>
+            <p>
+              {t(telegramEnabled ? 'otp.sentToTelegram' : 'otp.sentTo', {
+                phone: `+998 ${formatPhone(digits)}`,
+              })}
+            </p>
             <CodeInput
-              label={t('otp.label')}
+              label={t(telegramEnabled ? 'otp.labelTelegram' : 'otp.label')}
               value={code}
               onChange={setCode}
               onComplete={(value) => void verifyCode(value)}

@@ -1,9 +1,11 @@
 'use client';
 
 import { api, ApiError, forgetSession, rememberSession, type SessionInfo } from '@mathpath/client';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { type FormEvent, useState } from 'react';
 import { Captcha } from '../../components/captcha';
+import { QrCode } from '../../components/qr-code';
 import { Button, ErrorText, Field } from '../../components/ui';
 import { errorMessage } from '../../lib/editor';
 import { t } from '../../lib/i18n';
@@ -154,6 +156,9 @@ export default function LoginPage() {
           <Button type="submit" busy={busy}>
             {t('login.submit')}
           </Button>
+          <Link className="link" href="/reset-password">
+            {t('login.forgot')}
+          </Link>
         </form>
       )}
 
@@ -161,6 +166,7 @@ export default function LoginPage() {
         <section className="stack">
           <h2>{t('mfa.enrolTitle')}</h2>
           <p>{t('mfa.enrolSteps')}</p>
+          <QrCode value={stage.otpauthUri} label={t('mfa.qrAlt')} />
           <p>
             <a className="button secondary" href={stage.otpauthUri}>
               {t('mfa.openApp')}

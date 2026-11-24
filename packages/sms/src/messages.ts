@@ -77,6 +77,8 @@ function weeklyReport(locale: string, children: readonly WeeklyChildLine[], link
 export const smsMessages = {
   otpCode: (code: string): string =>
     `MathPath kodi: ${code}. Uni hech kimga bermang. / Kod: ${code}. Никому не сообщайте.`,
+  resetCode: (code: string): string =>
+    `MathPath parolni tiklash kodi: ${code}. Siz so'ramagan bo'lsangiz, e'tibor bermang. / Код для сброса пароля: ${code}. Если это не вы, ничего не делайте.`,
   confirmCode: (code: string): string =>
     `MathPath tasdiqlash kodi: ${code}. Uni hech kimga bermang. / Код подтверждения: ${code}.`,
   childPinLocked: (): string =>

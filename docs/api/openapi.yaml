@@ -163,7 +163,9 @@ paths:
       summary: Verify an OTP code.
       description: |
         For `signup` returns a short-lived `registrationToken` used by
-        `/auth/register`. For `login` creates a session (sets cookies). Counts
+        `/auth/register`. For `reset_password` returns a short-lived
+        `resetToken` used by `/auth/password/reset`. For `login` creates a
+        session (sets cookies). Counts
         attempts; the challenge is burned after the configured maximum.
       security: []
       x-permission: public
@@ -189,10 +191,40 @@ paths:
               schema:
                 oneOf:
                   - $ref: '#/components/schemas/RegistrationTicket'
+                  - $ref: '#/components/schemas/PasswordResetTicket'
                   - $ref: '#/components/schemas/SessionInfo'
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /auth/password/reset:
+    post:
+      tags: [Auth]
+      operationId: resetPassword
+      summary: Set a new password with a reset ticket.
+      description: |
+        The ticket comes from `/auth/otp/verify` with purpose `reset_password`
+        and works once: it stops being valid when the password changes. The
+        new password is checked like at sign-up. Every session of the account
+        is ended; nothing is signed in, and staff still pass 2FA at sign-in.
+      security: []
+      x-permission: public
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [resetToken, newPassword]
+              additionalProperties: false
+              properties:
+                resetToken: { type: string }
+                newPassword: { type: string, minLength: 10, maxLength: 128 }
+      responses:
+        '204': { description: Password changed; all sessions ended. }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
 
   /auth/register:
     post:
@@ -2591,6 +2623,13 @@ components:
       required: [registrationToken, expiresAt]
       properties:
         registrationToken: { type: string }
+        expiresAt: { type: string, format: date-time }
+
+    PasswordResetTicket:
+      type: object
+      required: [resetToken, expiresAt]
+      properties:
+        resetToken: { type: string }
         expiresAt: { type: string, format: date-time }
 
     SessionInfo:
