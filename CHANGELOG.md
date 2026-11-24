@@ -6,6 +6,12 @@ project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- Studio: a person who is to become an author or admin can now sign in to the
+  studio without a role and turn on 2FA, so an admin can grant the staff role.
+  Before, the studio turned them away and the role could never be granted.
+
 ### Added
 
 - Design documents: PRD, architecture overview, ADR 0001–0009, database schema,
