@@ -1,9 +1,10 @@
 /**
- * Staff side: an admin must enrol 2FA on first sign-in, then locks a parent's
- * account with a reason, and the change appears in the audit log; then asks
- * for a refund of the parent's Payme payment.
+ * Staff side: an admin must enrol 2FA on first sign-in; a future author turns
+ * on 2FA in the studio before having a role, so the admin can grant it; the
+ * admin locks a parent's account with a reason, and the change appears in the
+ * audit log; then asks for a refund of the parent's Payme payment.
  */
-import { expect, test } from '@playwright/test';
+import { type Browser, expect, test } from '@playwright/test';
 import {
   expectAccessible,
   grantRole,
@@ -21,12 +22,14 @@ test('an admin enrols 2FA, locks an account, reads the audit log and asks for a 
 }) => {
   const adminPhone = newPhone();
   const parentPhone = newPhone();
+  const authorPhone = newPhone();
   const password = 'studio-e2e-pass-2026';
 
   // Two ordinary accounts from the web app; one becomes the first admin.
   for (const [phone, name] of [
     [adminPhone, 'Admin'],
     [parentPhone, 'Nodira'],
+    [authorPhone, 'Aziz'],
   ] as const) {
     const context = await browser.newContext();
     await signUpParent(await context.newPage(), phone, password, name);
@@ -51,6 +54,20 @@ test('an admin enrols 2FA, locks an account, reads the audit log and asks for a 
     .fill(totp((await secret.textContent()) ?? ''));
   await page.getByRole('button', { name: 'Tasdiqlash' }).click();
   await page.getByRole('button', { name: 'Saqladim, davom etish' }).click();
+
+  // A staff role needs 2FA first: the future author turns it on in the studio
+  // without a role, and the admin can then grant one.
+  const authorSecret = await enrolWithoutRole(browser, authorPhone, password);
+  await page.getByRole('link', { name: 'Foydalanuvchilar' }).click();
+  await page.getByLabel('Telefon, ism yoki ID').fill(authorPhone);
+  await page.getByRole('button', { name: 'Qidirish' }).click();
+  await expect(page.getByText('2FA yoqilgan')).toBeVisible();
+  await page.getByRole('button', { name: 'O‘zgartirish' }).click();
+  await page.getByRole('checkbox', { name: 'Muallif' }).check();
+  await page.getByLabel('Sabab').fill('E2E: new content author');
+  await page.getByRole('button', { name: 'Saqlash' }).click();
+  await expect(page.getByRole('status').getByText('Saqlandi.')).toBeVisible();
+  await signInAsStaff(browser, authorPhone, password, authorSecret);
 
   await page.getByRole('link', { name: 'Foydalanuvchilar' }).click();
   await page.getByLabel('Telefon, ism yoki ID').fill(parentPhone);
@@ -80,3 +97,41 @@ test('an admin enrols 2FA, locks an account, reads the audit log and asks for a 
   await expect(page.getByRole('button', { name: 'Pulni qaytarish' })).toHaveCount(0);
   await expectAccessible(page);
 });
+
+/** Signs in to the studio without a staff role, turns on 2FA, returns the TOTP secret. */
+async function enrolWithoutRole(browser: Browser, phone: string, password: string) {
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  await page.goto(`${STUDIO_URL}/login`);
+  await page.getByLabel('Telefon raqami').fill(`+998${phone}`);
+  await page.getByLabel('Parol').fill(password);
+  await passDevCaptcha(page);
+  await page.getByRole('button', { name: 'Kirish' }).click();
+  const secret = (await page.locator('code.secret').textContent()) ?? '';
+  await page.getByLabel('Autentifikator ilovasidagi 6 xonali kod').fill(totp(secret));
+  await page.getByRole('button', { name: 'Tasdiqlash' }).click();
+  await page.getByRole('button', { name: 'Saqladim, davom etish' }).click();
+  await expect(page.getByText('Ikki bosqichli tasdiq yoqilgan')).toBeVisible();
+  await expectAccessible(page);
+  await page.getByRole('button', { name: 'Chiqish' }).click();
+  await context.close();
+  return secret;
+}
+
+/** Signs in with the granted role: one TOTP code, then the studio opens. */
+async function signInAsStaff(browser: Browser, phone: string, password: string, secret: string) {
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  await page.goto(`${STUDIO_URL}/login`);
+  await page.getByLabel('Telefon raqami').fill(`+998${phone}`);
+  await page.getByLabel('Parol').fill(password);
+  await passDevCaptcha(page);
+  await page.getByRole('button', { name: 'Kirish' }).click();
+  // The enrolment code's 30-second step is spent; the next step is within the drift window.
+  await page
+    .getByLabel('Autentifikator ilovasidagi 6 xonali kod')
+    .fill(totp(secret, Date.now() + 30_000));
+  await page.getByRole('button', { name: 'Tasdiqlash' }).click();
+  await page.waitForURL((url) => !url.pathname.endsWith('/login'));
+  await context.close();
+}

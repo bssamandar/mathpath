@@ -1,6 +1,6 @@
 'use client';
 
-import { api, ApiError, rememberSession, type SessionInfo } from '@mathpath/client';
+import { api, ApiError, forgetSession, rememberSession, type SessionInfo } from '@mathpath/client';
 import { useRouter } from 'next/navigation';
 import { type FormEvent, useState } from 'react';
 import { Captcha } from '../../components/captcha';
@@ -15,12 +15,17 @@ type Stage =
   | { kind: 'password' }
   | { kind: 'code' }
   | { kind: 'enrol'; factorId: string; otpauthUri: string }
-  | { kind: 'recovery-codes'; codes: string[] };
+  | { kind: 'recovery-codes'; codes: string[] }
+  | { kind: 'awaiting-role' };
 
 /**
  * Staff sign-in (security plan C-08): phone and password, then TOTP. A staff
  * member without an authenticator yet is enrolled here, and sees their
  * recovery codes once.
+ *
+ * A staff role is only granted to an account that already has 2FA, so a
+ * person who is about to become staff signs in here first: without a staff
+ * role they are offered the same enrolment and then told to ask an admin.
  */
 export default function LoginPage() {
   const router = useRouter();
@@ -32,6 +37,8 @@ export default function LoginPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [captcha, setCaptcha] = useState(false);
+  // Signed in without a staff role: enrolling 2FA so an admin can grant one.
+  const [awaitingRole, setAwaitingRole] = useState(false);
 
   const attempt = async (work: () => Promise<void>) => {
     setBusy(true);
@@ -44,6 +51,16 @@ export default function LoginPage() {
     } finally {
       setBusy(false);
     }
+  };
+
+  // The session has no staff role, so nothing in the studio is open to it.
+  const signOut = async () => {
+    await api('/auth/logout', { method: 'POST' }).catch(() => undefined);
+    forgetSession();
+    setAwaitingRole(false);
+    setPassword('');
+    setCode('');
+    setStage({ kind: 'password' });
   };
 
   const finish = (session: SessionInfo) => {
@@ -64,20 +81,20 @@ export default function LoginPage() {
       });
       setCaptcha(false);
       rememberSession(session);
-      if (!session.roles.some((r) => STAFF.includes(r))) {
-        setError(t('login.notStaff'));
-        return;
-      }
-      if (!session.mfaRequired) return finish(session);
+      const staff = session.roles.some((r) => STAFF.includes(r));
+      if (staff && !session.mfaRequired) return finish(session);
       // Has an authenticator already? Enrolment refuses with MFA_REQUIRED if so.
       try {
         const enrolment = await api<{ factorId: string; otpauthUri: string }>('/auth/mfa/totp', {
           method: 'POST',
         });
+        setAwaitingRole(!staff);
         setStage({ kind: 'enrol', ...enrolment });
       } catch (e) {
-        if (e instanceof ApiError && e.code === 'MFA_REQUIRED') setStage({ kind: 'code' });
-        else throw e;
+        if (!(e instanceof ApiError && e.code === 'MFA_REQUIRED')) throw e;
+        if (staff) setStage({ kind: 'code' });
+        // 2FA is on but no role yet: nothing to do here until an admin grants one.
+        else setStage({ kind: 'awaiting-role' });
       }
     });
 
@@ -97,6 +114,7 @@ export default function LoginPage() {
       );
       rememberSession(result.session);
       if (result.recoveryCodes) setStage({ kind: 'recovery-codes', codes: result.recoveryCodes });
+      else if (awaitingRole) setStage({ kind: 'awaiting-role' });
       else finish(result.session);
     });
   };
@@ -187,7 +205,21 @@ export default function LoginPage() {
               </li>
             ))}
           </ul>
-          <Button onClick={() => router.replace('/')}>{t('mfa.recoverySaved')}</Button>
+          <Button
+            onClick={() =>
+              awaitingRole ? setStage({ kind: 'awaiting-role' }) : router.replace('/')
+            }
+          >
+            {t('mfa.recoverySaved')}
+          </Button>
+        </section>
+      )}
+
+      {stage.kind === 'awaiting-role' && (
+        <section className="stack" role="status">
+          <h2>{t('login.awaitingRoleTitle')}</h2>
+          <p>{t('login.awaitingRoleText')}</p>
+          <Button onClick={() => void signOut()}>{t('login.signOut')}</Button>
         </section>
       )}
     </main>

@@ -13,7 +13,10 @@ export const uz = {
   'login.phoneHint': '+998 bilan, masalan +998901234567',
   'login.password': 'Parol',
   'login.submit': 'Kirish',
-  'login.notStaff': 'Studio faqat muallif, tekshiruvchi va adminlar uchun.',
+  'login.awaitingRoleTitle': 'Ikki bosqichli tasdiq yoqilgan',
+  'login.awaitingRoleText':
+    'Hisobingizda hali xodim roli yo‘q. Adminga ayting: endi u sizga rol bera oladi. Rol berilgach, shu sahifadan qayta kiring.',
+  'login.signOut': 'Chiqish',
   'mfa.title': 'Ikki bosqichli tasdiq',
   'mfa.enterCode': 'Autentifikator ilovasidagi 6 xonali kod',
   'mfa.verify': 'Tasdiqlash',
@@ -375,7 +378,8 @@ export const uz = {
   'error.REFUND_UNAVAILABLE':
     'Click qaytarishlari uchun CLICK_MERCHANT_USER_ID sozlanmagan. Bu to‘lovni Click kabinetida qaytaring.',
   'error.SELF_CHANGE_FORBIDDEN': 'O‘z hisobingizni boshqa admin o‘zgartirishi kerak.',
-  'error.MFA_NOT_ENROLLED': 'Xodim roli uchun bu odam avval 2FA ni yoqishi kerak.',
+  'error.MFA_NOT_ENROLLED':
+    'Xodim roli uchun bu odam avval 2FA ni yoqishi kerak: u Studio kirish sahifasida o‘z telefoni va paroli bilan kirib, autentifikator ilovasini ulasin.',
   'error.ACCOUNT_PENDING_DELETION': 'Bu hisob o‘chirilmoqda.',
   'error.USER_NOT_FOUND': 'Foydalanuvchi topilmadi.',
   'error.REVIEW_NOT_FOUND': 'Bu tekshiruv topilmadi.',

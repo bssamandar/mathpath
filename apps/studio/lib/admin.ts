@@ -123,7 +123,8 @@ export function changeProblems(
   else if (reason.length > 500) out.reason = 'Sabab 500 belgidan oshmasin.';
   const newStaff = draft.roles.filter((r) => STAFF.has(r) && !user.roles.includes(r));
   if (newStaff.length > 0 && !user.mfaEnabled) {
-    out.roles = 'Xodim roli uchun avval ikki bosqichli kirishni yoqish kerak.';
+    out.roles =
+      'Xodim roli uchun bu odam avval 2FA ni yoqishi kerak: u Studio kirish sahifasida o‘z telefoni va paroli bilan kirib, autentifikator ilovasini ulasin.';
   }
   return out;
 }
